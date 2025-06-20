@@ -1,0 +1,29 @@
+version: '3'
+
+services:
+  checkout:
+    build: .
+    ports:
+      - "4111:4111" #output:input
+    volumes:
+      - .:/app
+      # Exclude node_modules and .mastra directories from volume mapping
+      - /app/node_modules
+      - /app/.mastra
+    environment:
+      - NODE_ENV=development
+  vector-db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_PASSWORD: spectra
+      POSTGRES_DB: checkout
+      POSTGRES_USER: postgres
+    ports:
+      - "5434:5432" #output:input
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # Optional: init scripts
+    restart: unless-stopped
+
+volumes:
+  pgvector_data:
