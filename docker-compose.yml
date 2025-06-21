@@ -6,12 +6,20 @@ services:
     ports:
       - "4111:4111" #output:input
     volumes:
-      - .:/app
-      # Exclude node_modules and .mastra directories from volume mapping
       - /app/node_modules
-      - /app/.mastra
+    # volumes:
+    #   - .:/app
+    #   # Exclude node_modules and .mastra directories from volume mapping
+    #   - /app/node_modules
+    #   - /app/.mastra
     environment:
       - NODE_ENV=development
+      - DB_MEMORY=postgres://postgres:spectra@vector-db:5432
+      - GOOGLE_GENERATIVE_AI_API_KEY=AIzaSyAD_WjA_RMCGZZ8t0QfjendN1kbIJ4SWjc
+    develop:
+      watch:
+        - action: rebuild
+          path: .
   vector-db:
     image: pgvector/pgvector:pg17
     environment:
@@ -19,7 +27,7 @@ services:
       POSTGRES_DB: checkout
       POSTGRES_USER: postgres
     ports:
-      - "5434:5432" #output:input
+      - "5432:5432" #output:input
     volumes:
       - pgvector_data:/var/lib/postgresql/data
       # - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # Optional: init scripts

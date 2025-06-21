@@ -8,4 +8,5 @@ export default defineConfig({
   dbCredentials: {
     url: env.DB_MEMORY!,
   },
+  schemaFilter: ['!vector', '!storage']
 })

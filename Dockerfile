@@ -6,7 +6,7 @@ COPY package*.json .
 
 RUN npm install
 
-COPY . ./
+COPY . .
 
 #[Exposes port 3000]
 EXPOSE 4111
