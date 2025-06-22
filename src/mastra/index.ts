@@ -10,6 +10,7 @@ import tryCatch from "../utils/TryCatch";
 import { Context } from 'hono'
 import { createAdmin, loginAdmin } from "../controllers/admin.controller";
 import { setCookie } from 'hono/cookie'
+import { generateJWT, validateJWT } from "../middleware/JWT";
 
 export const mastra = new Mastra({
   workflows: { weatherWorkflow },
@@ -86,6 +87,22 @@ export const mastra = new Mastra({
           return c.json(create, create.statusCode)
         },
       }),
+      registerApiRoute('/test', {
+        method: "GET",
+        middleware: validateJWT,
+        handler: async (c) => {
+          return c.json({ message: "Hi" });
+        },
+
+      }),
+      registerApiRoute('/test/gen', {
+        method: "GET",
+        handler: async (c) => {
+          const token = await generateJWT({name: "spectra"})
+          return c.json({ message: "Done", token });
+        },
+
+      }),
       registerApiRoute('/business', {
         method: "POST",
         middleware: zValidator('json', storeIdSchema),
@@ -95,7 +112,7 @@ export const mastra = new Mastra({
           return c.json({ message: text });
         },
 
-      })
+      }),
     ],
   },
 });

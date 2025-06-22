@@ -8,15 +8,16 @@ const EnvSchema = z.object({
   DB_USERNAME: z.string(),
   DB_PASSWORD: z.string(),
   DB_HOST: z.string(),
-  DB_PORT: z.string()
+  DB_PORT: z.string(),
+  JWT_SECRET: z.string()
 })
 
 export type EnvSchema = z.infer<typeof EnvSchema>
 
-const env: Partial<EnvSchema> = { 
-  ...process.env
-}
+// Parse and validate environment variables
+const env = EnvSchema.parse(process.env)
 
-export default env;
+export default env
 
-console.log(env.DB_MEMORY)
+// Debug logging
+console.log('JWT_SECRET loaded:', !!env.JWT_SECRET)
