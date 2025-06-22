@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.19",
+    "@hono/zod-validator": "^0.7.0",
     "@mastra/core": "^0.10.6",
     "@mastra/libsql": "^0.10.3",
     "@mastra/loggers": "^0.10.2",
