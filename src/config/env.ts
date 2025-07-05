@@ -9,7 +9,8 @@ const EnvSchema = z.object({
   DB_PASSWORD: z.string(),
   DB_HOST: z.string(),
   DB_PORT: z.string(),
-  JWT_SECRET: z.string()
+  JWT_SECRET: z.string(),
+  TELEGRAM_BOT_TOKEN: z.string()
 })
 
 export type EnvSchema = z.infer<typeof EnvSchema>

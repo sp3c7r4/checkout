@@ -4,13 +4,17 @@ import { LibSQLStore } from "@mastra/libsql";
 import { weatherWorkflow } from "./workflows/weather-workflow";
 import { checkoutAgent } from "./agents";
 import { registerApiRoute } from "@mastra/core/server";
-import { addressSchema, createAdminSchema, loginAdminSchema, storeIdSchema } from "../validator/schemas";
+import { addressSchema, businessSchema, createAdminSchema, loginAdminSchema, storeIdSchema, userSchema } from "../validator/schemas";
 import { zValidator } from '@hono/zod-validator'
 import tryCatch from "../utils/TryCatch";
 import { Context } from 'hono'
 import { createAdmin, loginAdmin } from "../controllers/admin.controller";
 import { setCookie } from 'hono/cookie'
-import { generateJWT, validateJWT } from "../middleware/JWT";
+import { validateJWT } from "../middleware/JWT";
+import { createUser, getUsers } from "../controllers/user.controller";
+import { addAddress, createBusiness } from "../controllers/business.controller";
+import Checkout from "../utils/checkout-bot";
+import env from "../config/env";
 
 export const mastra = new Mastra({
   workflows: { weatherWorkflow },
@@ -71,36 +75,43 @@ export const mastra = new Mastra({
       }),
       registerApiRoute("/business/create", {
         method: "POST",
-        middleware: zValidator('json', storeIdSchema),
-        handler: async (c) => {
-          const { state, street, country } = await c.req.json();
-          const create = await createAdmin(data)
+        middleware: [validateJWT,zValidator('json', businessSchema)],
+        handler: tryCatch(async (c) => {
+          const { id } = c.get('admin')
+          console.log(id)
+          const data = await c.req.json();
+          const create = await createBusiness({...data, admin_id: id })
           return c.json(create, create.statusCode)
-        },
+        }),
       }),
       registerApiRoute("/business/address", {
         method: "POST",
         middleware: zValidator('json', addressSchema),
-        handler: async (c) => {
-          const { state, street, country } = await c.req.json();
-          const create = await createAdmin(data)
+        handler: tryCatch(async (c) => {
+          const { state, street, country, business_id } = await c.req.json();
+          const create = await addAddress(business_id, { state, street, country })
           return c.json(create, create.statusCode)
-        },
+        }),
       }),
-      registerApiRoute('/test', {
-        method: "GET",
-        middleware: validateJWT,
-        handler: async (c) => {
-          return c.json({ message: "Hi" });
-        },
-
+      registerApiRoute('/user/create', {
+        method: "POST",
+        middleware: [validateJWT, zValidator('json', userSchema)],
+        handler: tryCatch(async (c) => {
+          const { business_id, name } = await c.req.json();
+          const create = await createUser({ business_id, name })
+          return c.json(create, create.statusCode)
+        }),
+        
       }),
-      registerApiRoute('/test/gen', {
+      registerApiRoute('/user', {
         method: "GET",
-        handler: async (c) => {
-          const token = await generateJWT({name: "spectra"})
-          return c.json({ message: "Done", token });
-        },
+        middleware: [validateJWT],
+        handler: tryCatch(async (c) => {
+          const { id } = c.get('admin')
+          const fetch = await getUsers(id)
+          return c.json(fetch, fetch.statusCode)
+          // return c.json({ message: "Done", token });
+        }),
 
       }),
       registerApiRoute('/business', {
@@ -113,6 +124,19 @@ export const mastra = new Mastra({
         },
 
       }),
+      // registerApiRoute('/user', {
+      //   method: "GET",
+      //   middleware: [validateJWT],
+      //   handler: async (c) => {
+      //     const { id } = c.get('admin')
+      //     const login = await getUsers(id)
+      //     setCookie(c, 'ref', 'admin')
+      //     return c.json(login, login.statusCode)
+      //   },
+
+      // }),
     ],
   },
 });
+
+export const checkoutBot = new Checkout(env.TELEGRAM_BOT_TOKEN)

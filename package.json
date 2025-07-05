@@ -26,11 +26,13 @@
     "@mastra/memory": "^0.10.4",
     "@mastra/pg": "^0.11.0",
     "@mastra/vector-pg": "^0.1.5",
+    "@tanstack/react-query": "^5.81.2",
     "bcryptjs": "^3.0.2",
     "dotenv": "^16.5.0",
     "dotenv-expand": "^12.0.2",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.16.2",
+    "telegraf": "^4.16.3",
     "ulid": "^3.0.1",
     "zod": "^3.25.67"
   },
