@@ -4,7 +4,7 @@ import { LibSQLStore } from "@mastra/libsql";
 import { weatherWorkflow } from "./workflows/weather-workflow";
 import { checkoutAgent } from "./agents";
 import { registerApiRoute } from "@mastra/core/server";
-import { addressSchema, businessSchema, createAdminSchema, loginAdminSchema, storeIdSchema, userSchema } from "../validator/schemas";
+import { addressSchema, businessSchema, createAdminSchema, createProductSchema, loginAdminSchema, storeIdSchema, userSchema } from "../validator/schemas";
 import { zValidator } from '@hono/zod-validator'
 import tryCatch from "../utils/TryCatch";
 import { Context } from 'hono'
@@ -15,6 +15,7 @@ import { createUser, getUsers } from "../controllers/user.controller";
 import { addAddress, createBusiness } from "../controllers/business.controller";
 import Checkout from "../utils/checkout-bot";
 import env from "../config/env";
+import { createProduct, getProducts, getSingleProduct } from "../controllers/product.controller";
 
 export const mastra = new Mastra({
   workflows: { weatherWorkflow },
@@ -27,6 +28,7 @@ export const mastra = new Mastra({
     level: "info",
   }),
   server: {
+
     // middleware: 
     host: "0.0.0.0",
     middleware: null,
@@ -114,15 +116,39 @@ export const mastra = new Mastra({
         }),
 
       }),
-      registerApiRoute('/business', {
+      registerApiRoute('/admin/products/:business_id', {
+        method: "GET",
+        middleware: [validateJWT],
+        handler: tryCatch(async (c) => {
+          const { id } = c.get('admin')
+          const {business_id} = await c.req.param()
+          const products = await getProducts(business_id)
+          console.log(products, business_id)
+          return c.json(products, products.statusCode || 200)
+          // return c.json({ message: "Done", token });
+        }),
+      }),
+      registerApiRoute('/admin/products/:business_id/:product_id', {
+        method: "GET",
+        middleware: [validateJWT],
+        handler: tryCatch(async (c) => {
+          const { id } = c.get('admin')
+          const {business_id, product_id} = await c.req.param()
+          const products = await getSingleProduct(business_id, product_id)
+          console.log(products, business_id)
+          return c.json(products, products.statusCode || 200)
+          // return c.json({ message: "Done", token });
+        }),
+      }),
+      registerApiRoute('/admin/products', {
         method: "POST",
-        middleware: zValidator('json', storeIdSchema),
-        handler: async (c) => {
-          const { store_id } = await c.req.json();
-          
-          return c.json({ message: text });
-        },
-
+        middleware: [validateJWT, zValidator('json', createProductSchema)],
+        handler: tryCatch(async (c) => {
+          const data = await c.req.json() // Assuming you want to get business_id from the request body
+          const res = await createProduct(data)
+          return c.json(res, res.statusCode)
+          // return c.json({ message: "Done", token });
+        }),
       }),
       // registerApiRoute('/user', {
       //   method: "GET",

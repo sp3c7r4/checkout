@@ -1,5 +1,10 @@
+import { db } from "./src/db";
+import { getUserById } from "./src/helpers/user";
+import { checkProductTool } from "./src/mastra/tools";
 import AdminRepository from "./src/repository/AdminRepository";
 import BusinessRepository from "./src/repository/BusinessRepository";
+import ProductRepository from "./src/repository/ProductRepository";
+import UserRepository from "./src/repository/UserRepository";
 
 // console.log(
 //   await AdminRepository.create({
@@ -12,4 +17,10 @@ import BusinessRepository from "./src/repository/BusinessRepository";
 
 // console.log(await AdminRepository.getUsers())
 
-console.log(await BusinessRepository.readOneByAdminId())
+// console.log(await db.query.user.findFirst({
+//   where: (u, { eq }) => eq(u.id, 6178017781),
+// }));
+
+// console.log(await checkProductTool.execute({context: { business_id: '01JYE8PRGYRNBMMZMAMMBRV1SV' }}))
+
+console.log(await ProductRepository.readProductsByIds(['01JZG4QV166R0JBMN05V4QTFTP', '01JZG36A1Z2BXYBGX88773BBGM']))

@@ -21,4 +21,4 @@ const env = EnvSchema.parse(process.env)
 export default env
 
 // Debug logging
-console.log('JWT_SECRET loaded:', !!env.JWT_SECRET)
+Object.entries(env).forEach(([key, value]) => console.log(`${key}: ${!!value}`));
