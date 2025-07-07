@@ -1,0 +1,30 @@
+import { getAdminByEmail, validateAdminByEmail } from "../helpers/admin";
+import { generateJWT } from "../middleware/JWT";
+import AdminRepository from "../repository/AdminRepository";
+import AdminResource from "../resource/admin";
+import BusinessResource from "../resource/business";
+import { verifyToken } from "../utils/Hashing";
+import { BAD_REQUEST, CREATED, OK } from "../utils/Response";
+
+export async function createAdmin(data: any) {
+  const { first_name, last_name, email, password } = data
+  await validateAdminByEmail(email)
+  const create = await AdminRepository.create({ first_name, last_name, email, password })
+  return CREATED(`Admin created successfully`,create)
+}
+
+export async function loginAdmin(email: string, password: string) {
+  const admin = await getAdminByEmail(email)
+  console.log(admin)
+
+  const data = {
+    admin: AdminResource(admin),
+    business: admin.business ? BusinessResource(admin.business) : undefined
+  }
+
+  const decrypt_pass = await verifyToken(password, admin.password)
+  const token = await generateJWT({ admin: AdminResource(admin)})
+  if(!decrypt_pass) return BAD_REQUEST(`Incorrect credentials 😔`)
+
+  return OK(`Admin login successfully`,{ ...data, token })
+}
