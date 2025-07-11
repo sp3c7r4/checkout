@@ -1,8 +1,8 @@
 import Http from "./Http";
 
 export default class CustomError extends Error {
-  status: string
-  status_code: number
+  status: string;
+  status_code: number;
 
   constructor(message: string, status_code: number, status: string) {
     super(message);
@@ -21,7 +21,6 @@ export function CE_BAD_REQUEST(message: string) {
 }
 
 export function CE_INTERNAL_SERVER(message: string) {
-  console.log("Hi - Error", message)
   throw new CustomError(
     message,
     Http.INTERNAL_SERVER_ERROR.code,

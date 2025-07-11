@@ -21,16 +21,17 @@ export const loginAdminSchema = z.object({
 })
 
 export const businessSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email()
+  name: z.string().min(2).toLowerCase(),
+  email: z.string().email().toLowerCase()
 })
 
 export const addressSchema = z.object({
-  street: z.string().min(5),
-  state: z.string().min(2),
-  country: z.string().min(2),
-  business_id: z.string().ulid()
+  street: z.string().min(5).toLowerCase(),
+  state: z.string().min(2).toLowerCase(),
+  country: z.string().min(2).toLowerCase()
 })
+
+export const businessAddressSchema = businessSchema.merge(addressSchema)
 
 export const userSchema = z.object({
   business_id: z.string().ulid(),
@@ -41,6 +42,20 @@ export const createProductSchema = z.object({
   name: z.string().min(2).toLowerCase(),
   image: z.string().url(),
   price: z.string().min(1),
+  quantity: z.number(),
+  description: z.string(),
   kg: z.string().min(1),
   business_id: z.string().ulid()
 })
+
+export const businessIDSchema = z.object({
+  business_id: z.string().ulid()
+})
+
+export const productIDSchema = z.object({
+  product_id: z.string().ulid()
+})
+
+export const productUpdateSchema = createProductSchema.partial()
+export const productDeleteSchema = businessIDSchema.merge(productIDSchema)
+export const businessUpdateSchema = businessIDSchema.merge(businessAddressSchema.partial())

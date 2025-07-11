@@ -1,25 +1,24 @@
-import { Context, Next } from 'hono'
-import { BAD_REQUEST, INTERNAL_SERVER_ERROR } from './Response';
-import CustomError from './Error';
+import { Context, Next } from "hono";
+import { ContextWithMastra } from "@mastra/core/server";
+import { BAD_REQUEST, INTERNAL_SERVER_ERROR } from "./Response";
+import CustomError from "./Error";
 
-// For handlers that directly return responses
-const tryCatch = (controller: (c: Context) => Promise<Response>) => 
-  async (c: Context, _next: Next) => {
+// Fix: Return a proper middleware function
+const tryCatch =
+  (controller: (c: ContextWithMastra) => Promise<Response>) =>
+  async (c: ContextWithMastra, _next: Next): Promise<Response> => {
     try {
       return await controller(c);
     } catch (error: any) {
-      console.log("I'm here", error)
-      if(error instanceof CustomError) {
-        console.log("HI - HELLO ",error)
+      if (error instanceof CustomError) {
         const { status, status_code, message } = error;
-        console.log("MERA: ",status, status_code, message)
         switch (status) {
-          case 'BAD_REQUEST':
-            return c.json(BAD_REQUEST(error.message), status_code)
-          case 'INTERNAL_SERVER_ERROR':
-            return c.json(INTERNAL_SERVER_ERROR(error.message), status_code)  
+          case "BAD_REQUEST":
+            return c.json(BAD_REQUEST(error.message), status_code as any);
+          case "INTERNAL_SERVER_ERROR":
+            return c.json(INTERNAL_SERVER_ERROR(error.message), status_code as any);
           default:
-            return c.json(INTERNAL_SERVER_ERROR(error.message), 500)
+            return c.json(INTERNAL_SERVER_ERROR(error.message), 500);
         }
       }
       console.error("Error occurred:", error);

@@ -1,7 +1,7 @@
-import { relations } from "drizzle-orm";
-import { boolean } from "drizzle-orm/gel-core";
+import { relations, sql } from "drizzle-orm";
 import { pgTable, varchar, json, integer, bigint } from "drizzle-orm/pg-core";
 import { ulid } from 'ulid';
+import { CartProduct } from "../types/product";
 
 export const admin = pgTable('admin', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
@@ -16,7 +16,6 @@ export const business = pgTable('business', {
   admin_id: varchar({ length: 26 }).unique().notNull().references(() => admin.id, { onDelete: 'cascade' }),
   name: varchar({ length: 255 }).notNull(),
   email: varchar({ length: 255 }).notNull(),
-  address_id: varchar({ length: 26 }).references(() => address.id, {onDelete: "cascade"}),
 });
 
 export const address = pgTable('address', {
@@ -24,6 +23,7 @@ export const address = pgTable('address', {
   street: varchar({ length: 255 }).notNull(),
   state: varchar({ length: 255 }).notNull(),
   country: varchar({ length: 255 }).notNull(),
+  business_id: varchar({ length: 26 }).references(() => business.id, {onDelete: "cascade"}),
 });
 
 export const product = pgTable('product', {
@@ -32,6 +32,8 @@ export const product = pgTable('product', {
   image: varchar({ length: 255 }).notNull(),
   price: varchar({ length: 255 }).notNull(),
   kg: varchar({ length: 255 }).notNull(),
+  quantity: integer().notNull().$default(() => 0),
+  description: varchar({ length: 255 }).notNull().$default(() => ''),
   business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' })
 })
 
@@ -45,7 +47,7 @@ export const user = pgTable('user', {
 
 export const cart = pgTable('cart', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
-  products: json(),
+  products: json().$type<CartProduct[]>(),
   user_id: bigint({mode: 'number'}).notNull().references(() => user.id, { onDelete: 'cascade' }),
   business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
   total_price: integer().notNull().$default(() => 0),
@@ -90,8 +92,8 @@ export const businessRelations = relations(business, ({ one, many }) => ({
     references: [admin.id]
   }),
   address: one(address, {
-    fields: [business.address_id],
-    references: [address.id]
+    fields: [business.id],
+    references: [address.business_id]
   }),
   products: many(product),
   users: many(userBusiness),
@@ -105,8 +107,11 @@ export const productRelations = relations(product, ({ one }) => ({
   })
 }))
 
-export const addressRelations = relations(address, ({ many }) => ({
-  businesses: many(business)
+export const addressRelations = relations(address, ({ one }) => ({
+  business: one(business, {
+    fields: [address.business_id],
+    references: [business.id]
+  })
 }))
 
 export const cartRelations = relations(cart, ({ one }) => ({

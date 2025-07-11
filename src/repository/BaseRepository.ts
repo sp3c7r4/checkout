@@ -1,13 +1,11 @@
 import { PgTableWithColumns } from "drizzle-orm/pg-core";
 import { encryptDataPassword, validateDataCheck } from "../helpers";
 import { db } from "../db";
-import { admin } from "../db/schema";
 import { CE_INTERNAL_SERVER } from "../utils/Error";
 import { eq } from "drizzle-orm";
 
-
 export default class BaseRepository {
-  model: any
+  model: any;
 
   constructor(model: PgTableWithColumns<any>) {
     this.model = model;
@@ -18,28 +16,32 @@ export default class BaseRepository {
     validateDataCheck(data);
     try {
       const encrypted_data = await encryptDataPassword(data);
-      console.log('HERE', 'encryptedData', encrypted_data);
-      const result = await db.insert(this.model).values(encrypted_data).returning();
-      return result[0]
+      const result = await db
+        .insert(this.model)
+        .values(encrypted_data)
+        .returning();
+      return result[0];
     } catch (err) {
-      console.log(err.message)
       throw new CE_INTERNAL_SERVER(err.message);
     }
   }
-  
+
   async createMany(data: Array<object>) {
     validateDataCheck(data);
     try {
-      const encrypted_data = data.map(val=> encryptDataPassword(val))
-      return await db.insert(this.model).values(encrypted_data)
+      const encrypted_data = data.map((val) => encryptDataPassword(val));
+      return await db.insert(this.model).values(encrypted_data);
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
     }
   }
-  
+
   async readOneById(id: string) {
     try {
-      const findOne = await db.select().from(this.model).where(eq(this.model.id, id));
+      const findOne = await db
+        .select()
+        .from(this.model)
+        .where(eq(this.model.id, id));
       return findOne?.[0];
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
@@ -48,8 +50,11 @@ export default class BaseRepository {
 
   async readOneByEmail(email: string) {
     try {
-      const findOne = await db.select().from(this.model).where(eq(this.model.email, email));
-      return findOne[0]
+      const findOne = await db
+        .select()
+        .from(this.model)
+        .where(eq(this.model.email, email));
+      return findOne[0];
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
     }
@@ -58,7 +63,7 @@ export default class BaseRepository {
   async readAll() {
     try {
       const findOne = await db.select().from(this.model);
-      return findOne
+      return findOne;
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
     }
@@ -68,10 +73,12 @@ export default class BaseRepository {
     validateDataCheck(data);
     try {
       const encrypted_data = await encryptDataPassword(data);
-      await db.update(this.model)
-      .set(encrypted_data)
-      .where(eq(this.model.id, id));
-      return await db.select().from(this.model).where(eq(this.model.id, id));
+      const update = await db
+        .update(this.model)
+        .set(encrypted_data)
+        .where(eq(this.model.id, id))
+        .returning();
+      return update[0];
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
     }
@@ -80,8 +87,7 @@ export default class BaseRepository {
   // Delete user data
   async deleteModel(id: string) {
     try {
-      await db.delete(this.model)
-        .where(eq(this.model.id, id));
+      await db.delete(this.model).where(eq(this.model.id, id));
       return { success: true, id };
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);

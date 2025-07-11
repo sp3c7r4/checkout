@@ -1,14 +1,37 @@
-import { Telegraf, Context } from 'telegraf';
+import { Telegraf, Context, session } from 'telegraf';
 import { checkoutAgent } from '../mastra/agents';
 import { getUserById } from '../helpers/user';
 import UserBusinessRepository from '../repository/UserBusinessRepository';
 import { getBusinessById } from '../helpers/business';
 import CustomError from './Error';
+import { MarkDownizeProducts, MutateCartProduct } from '../helpers/bot';
+import { escapers } from "@telegraf/entity";
+import CheckoutEmitter from '../Event';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply } from 'telegraf/typings/core/types/typegram';
+import ProductRepository from '../repository/ProductRepository';
+import CartRepository from '../repository/CartRepository';
 
-export interface MyContext extends Context {
+interface CheckoutSession {
+  currentProduct?: {
+    id: string;
+    name: string;
+    price: number;
+  };
+  quantity?: string;
+  step?: 'idle' | 'entering_quantity' | 'confirming_order';
+  quantityMessageId?: number; // Add this line
+}
+
+interface MyContext extends Context {
   currentMessageId?: number;
   currentResponse?: string;
+  session: CheckoutSession;
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const help_commands =
   `*Available Commands:*
@@ -23,6 +46,7 @@ const help_commands =
 export default class Checkout {
   private bot: Telegraf<MyContext>;
   private readonly MAX_MESSAGE_LENGTH = 4096; // Telegram's message length limit
+  private BotSendMessageState = true;
 
   constructor(token: string) {
     // Create Telegraf bot instance
@@ -31,6 +55,8 @@ export default class Checkout {
     // Setup middleware and handlers
     this.setupMiddleware();
     this.setupHandlers();
+    this.setupListeners()
+    this.setupCallbacks()
     
     // Start the bot
     this.bot.launch();
@@ -39,22 +65,168 @@ export default class Checkout {
     process.once('SIGINT', () => this.bot.stop('SIGINT'));
     process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
   }
+  private createInlineNumberKeyboard(): InlineKeyboardMarkup {
+    return {
+      inline_keyboard: [
+        [
+          { text: '1', callback_data: '1' },
+          { text: '2', callback_data: '2' },
+          { text: '3', callback_data: '3' }
+        ],
+        [
+          { text: '4', callback_data: '4' },
+          { text: '5', callback_data: '5' },
+          { text: '6', callback_data: '6' }
+        ],
+        [
+          { text: '7', callback_data: '7' },
+          { text: '8', callback_data: '8' },
+          { text: '9', callback_data: '9' }
+        ],
+        [
+          { text: '0', callback_data: '0' },
+          { text: '⌫', callback_data: '⌫' },
+          { text: '✅', callback_data: '✅' }
+        ],
+        [
+          { text: 'cancel', callback_data: 'cancel' }
+        ]
+      ]
+    };
+  }
+
+  // Sends a message to a specific chat/user via the bot
+  // Usage: await this.sendMessage(chatId, "Hello, user")
+  async sendMessage(chatId: number | string, message: string, data: any) {
+    message = `${message}\n${data ? data.trim() : undefined}`
+    await this.bot.telegram.sendMessage(
+      chatId,
+      // escapers.HTML(message),
+      message,
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  async sendMessageImage(chatId: number | string, message: string, data: any, image: string, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined = undefined) {
+    message = `${message}\n${data ? data.trim() : undefined}`
+    
+    const imagePath = path.join(__dirname, `../../src/assets/${image}`);
+    reply_markup = reply_markup || {};
+    
+    await this.bot.telegram.sendPhoto(
+      chatId,
+      { source: imagePath },
+      { caption: message, parse_mode: 'HTML', reply_markup }
+    );
+  }
+
+  private setupListeners() {
+    CheckoutEmitter.on('sendStoreProducts', ({ user_id, message, data }) => {
+      console.log("Listed product event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, data, 'products.png');
+    });
+
+    CheckoutEmitter.on('foundProduct', ({ user_id, message, data, reply_markup }:{user_id: string, message: string, data: any, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined }) => {
+      console.log("Product found event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, data, 'available.png', reply_markup);
+    });
+
+    CheckoutEmitter.on('readCartItems', ({user_id, message, data, reply_markup}) => {
+      console.log("Cart items read event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, data, 'cart.png', reply_markup);
+    })
+  }
 
   private setupMiddleware() {
+    // Add session middleware
+    this.bot.use(session({
+      defaultSession: (): CheckoutSession => ({
+        step: 'idle',
+        quantity: ''
+      })
+    }));
+
     // Global error handler
     this.bot.catch((err: any, ctx: MyContext) => {
-      console.error('Bot error occurred:', err);
-      if (err instanceof CustomError) {
-        const { message } = err;
-        return ctx.reply(message);
-      }
-      return ctx.reply('Sorry, I encountered an error. Please try again.');
+      (async () => {
+        console.error('Bot error occurred:', err);
+        if (err instanceof CustomError) {
+          const { message } = err;
+          await ctx.reply(message);
+        } else {
+          await ctx.reply('Sorry, I encountered an error. Please try again.');
+        }
+      })();
     });
 
     // Initialize context properties
     this.bot.use(async (ctx, next) => {
       ctx.currentResponse = '';
       await next();
+    });
+  }
+
+  private setupCallbacks() {
+    this.bot.on('callback_query', async (ctx) => {
+      const data = 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
+      if(!data) throw new Error('Invalid callback data!')
+
+      if (data.startsWith('addToCart_')) {
+        const productId = data.replace('addToCart_', '');
+        const product = await ProductRepository.readOneById(productId);
+        
+        // Store in session
+        ctx.session.currentProduct = {
+          id: productId,
+          name: product.name,
+          price: product.price
+        };
+
+        
+        ctx.session.step = 'entering_quantity';
+        ctx.session.quantity = '';
+        
+        await ctx.answerCbQuery('Please enter quantity');
+        const message = await ctx.reply(
+          `How many ${product.name} would you like to add? (₦${product.price} each)`,
+          {
+            reply_markup: this.createInlineNumberKeyboard()
+          }
+        );
+
+        ctx.session.quantityMessageId = message.message_id;
+      } else if (data.startsWith('cartProductId_')) {
+        const productId = data.replace('cartProductId_', '');
+        const product = await ProductRepository.readOneById(productId);
+        if (!product) return await ctx.answerCbQuery('Product not found');
+        ctx.session.currentProduct = {
+          id: productId,
+          name: product.name,
+          price: product.price
+        };
+
+        const reply_markup = {
+        inline_keyboard: [
+          [
+            { text: "Edit Product", callback_data: `editProductId_${productId}` },
+            { text: "Remove Product", callback_data: `removeProductId_${productId}` },
+          ],
+          [
+            { text: "Cancel", callback_data: `cancel` },
+          ],
+        ],
+      };
+
+        CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
+        await ctx.answerCbQuery(`You selected ${product.name}`);
+      } else if (ctx.session.step === 'entering_quantity') {
+        await this.handleNumberKeyboard(ctx, data);
+      } else {
+        await ctx.answerCbQuery('Unknown option');
+      }
     });
   }
 
@@ -66,7 +238,7 @@ export default class Checkout {
       if (payload) {
         try {
           businessInfo = await getBusinessById(payload);
-          await UserBusinessRepository.storeUserWithBusiness(ctx.message.from, businessInfo.id, ctx, businessInfo.name);
+          await UserBusinessRepository.storeUserWithBusiness(ctx.message.from as any, businessInfo.id, ctx, businessInfo.name);
         } catch (e) {
           throw e;
         }
@@ -80,7 +252,7 @@ export default class Checkout {
 
     // Handle /help command
     this.bot.help(async (ctx) => {
-      return ctx.reply(help_commands, { parse_mode: 'MarkdownV2' });
+      return ctx.reply(help_commands, { parse_mode: 'Markdown' });
     });
 
     // Handle text messages
@@ -93,38 +265,199 @@ export default class Checkout {
   }
 
   private async handleTextMessage(ctx: MyContext) {
-    const text = ctx.message.text;
+    console.log(JSON.stringify(ctx))
+    const text = ctx?.text;
     const username = ctx.from?.username || 'unknown';
     const firstName = ctx.from?.first_name || 'unknown';
-    const userId = ctx.from?.id.toString();
+    const userId = ctx.from?.id.toString() || 'unknown';
     const { current_business_id } = await getUserById(userId);
 
     if (!text || text.trim().length === 0) {
       await ctx.reply('Please send a valid message.');
       return;
     }
-    console.log(`Info\nchat-id: ${ctx.chat.id},text: ${text}, userId: ${userId}, username: ${username}, firstName: ${firstName}, current_business_id: ${current_business_id}`);
+    console.log("Context Mode", ctx.session.step)
+    console.log(`Info\nchat-id: ${userId},text: ${text}, userId: ${userId}, username: ${username}, firstName: ${firstName}, current_business_id: ${current_business_id}`);
+    
+    // If user is in quantity entry mode, ignore text messages
+    if (ctx.session.step === 'entering_quantity') {
+      await ctx.reply('Please use the number keyboard above to enter quantity.');
+      return;
+    }
 
     try {
-      // Send "thinking" message and wait for the result
-      // await ctx.reply('Coming...');
       const response = await checkoutAgent.generate(text, {
-        threadId: `telegram-${current_business_id}-${userId}`,
+        threadId: `telegram-${current_business_id || 'default'}-${userId}`,
         resourceId: userId,
         context: [
           {
             role: 'system',
-            content: `Current user: ${firstName} business_id:(${current_business_id}) user_id:(${userId})`,
+            content: `Current user: ${firstName} (${username}) | business_id: ${current_business_id || 'none'} | user_id: ${userId}`,
           },
         ],
       });
-      console.log("Response:\n\n\n", response)
-      // Send the full response after it has been generated
-      await ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
-
+      
+      if(this.BotSendMessageState) ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
+      return;
     } catch (error) {
       console.error('Error processing message:', error);
-      await ctx.reply('Sorry, I encountered an error processing your message. Please try again.');
+      const { message } = error
+      console.log("Testing Error:\n\n\n", message)
+      
+      if (message?.includes('contents.parts must not be empty')) {
+        console.log('Clearing problematic memory thread...');
+        try {
+          const { message } = error;
+          const index = (message.match(/contents\[(\d+)\]/) || [])[1];
+          console.log('INDEX\n\n\n', index)
+          const response = await checkoutAgent.generate(text, {
+            threadId: `telegram-${current_business_id || 'default'}-${userId}`,
+            resourceId: userId,
+            context: [
+              {
+                role: 'system',
+                content: `Current user: ${firstName} (${username}) | business_id: ${current_business_id || 'none'} | user_id: ${userId}`,
+              },
+            ],
+          });
+          
+          if (this.BotSendMessageState) await ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
+        } catch (err) {
+          throw err
+        }
+      }
+      throw error
+    } finally {
+      this.BotSendMessageState = true;
+    }
+  }
+
+  private async addToCart(ctx: MyContext, product: any, quantity: number) {
+    try {
+      const userId = ctx.from?.id.toString() as any;
+      const { current_business_id } = await getUserById(userId);
+
+      product = { ...product, quantity };
+
+      const store_in_cart = await CartRepository.storeOneProductInCart(userId, current_business_id, product);
+
+      if (store_in_cart) {
+        const finalText = `✅ Added ${quantity} ${product.name}(s) to cart\nTotal: ₦${quantity * product.price}`;
+        
+        try {
+          await ctx.telegram.editMessageText(
+            ctx.chat?.id,
+            ctx.session.quantityMessageId,
+            undefined,
+            finalText
+          );
+        } catch (editError) {
+          // If editing fails, send a new message
+          await ctx.reply(finalText);
+        }
+      } else {
+        await ctx.reply('❌ Failed to add to cart. Please try again.');
+      }
+
+      // Reset session
+      ctx.session.step = 'idle';
+      ctx.session.currentProduct = undefined;
+      ctx.session.quantity = '';
+      ctx.session.quantityMessageId = undefined;
+
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      await ctx.reply('❌ Error adding to cart');
+      
+      // Reset session on error
+      ctx.session.step = 'idle';
+      ctx.session.currentProduct = undefined;
+      ctx.session.quantity = '';
+      ctx.session.quantityMessageId = undefined;
+    }
+  }
+
+  private async handleNumberKeyboard(ctx: MyContext, data: string) {
+  if (!ctx.session.currentProduct || !ctx.session.quantityMessageId) {
+    await ctx.answerCbQuery('Something went wrong. Please try again.');
+    ctx.session.step = 'idle';
+    return;
+  }
+
+  try {
+    switch (data) {
+      console.log('Switching carts')
+      case '⌫':
+        // Clear/backspace
+        if (ctx.session.quantity && ctx.session.quantity.length > 0) {
+          ctx.session.quantity = ctx.session.quantity.slice(0, -1);
+        }
+        await this.updateQuantityMessage(ctx);
+        await ctx.answerCbQuery('Deleted');
+        break;
+
+      case '✅':
+        // Confirm and add to cart
+        const quantity = parseInt(ctx.session.quantity || '0');
+        if (quantity > 0) {
+          await ctx.answerCbQuery('Adding to cart...');
+          await this.addToCart(ctx, ctx.session.currentProduct, quantity);
+        } else {
+          await ctx.answerCbQuery('Please enter a valid quantity');
+        }
+        break;
+      case 'cancel':
+        // Cancel the operation
+        ctx.session.step = 'idle';
+        ctx.session.currentProduct = undefined;
+        ctx.session.quantity = '';
+        ctx.session.quantityMessageId = undefined;
+        await ctx.answerCbQuery('Cart operation canceled 😊⚡');
+        await ctx.reply('Cart operation canceled. 😊⚡');
+        break;
+
+      default:
+        // Handle number input (0-9)
+        if (/^\d$/.test(data)) {
+          // Prevent leading zeros unless it's just "0"
+          if (ctx.session.quantity === '0' && data !== '0') {
+            ctx.session.quantity = data;
+          } else if (ctx.session.quantity !== '0') {
+            ctx.session.quantity = (ctx.session.quantity || '') + data;
+          }
+          
+          await this.updateQuantityMessage(ctx);
+          await ctx.answerCbQuery(data);
+        } else {
+          await ctx.answerCbQuery('Invalid input');
+        }
+    }
+  } catch (error) {
+    console.error('Error handling number keyboard:', error);
+    await ctx.answerCbQuery('Error processing input');
+  }
+  }
+
+  private async updateQuantityMessage(ctx: MyContext) {
+    if (!ctx.session.currentProduct || !ctx.session.quantityMessageId) return;
+
+    const quantity = ctx.session.quantity || '0';
+    const total = parseInt(quantity) * ctx.session.currentProduct.price;
+    
+    const updatedText = `How many ${ctx.session.currentProduct.name} would you like to add? (₦${ctx.session.currentProduct.price} each)\n\nQuantity: ${quantity}\nTotal: ₦${total}`;
+    
+    try {
+      await ctx.telegram.editMessageText(
+        ctx.chat?.id,
+        ctx.session.quantityMessageId,
+        undefined,
+        updatedText,
+        {
+          reply_markup: this.createInlineNumberKeyboard()
+        }
+      );
+    } catch (error) {
+      console.error('Error updating quantity message:', error);
     }
   }
 
