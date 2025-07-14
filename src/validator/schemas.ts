@@ -56,6 +56,14 @@ export const productIDSchema = z.object({
   product_id: z.string().ulid()
 })
 
+export const settingsSchema = z.object({
+  // settings_id, mass_view, notifications, weekly_reports
+  settings_id: z.string().ulid().optional(),
+  mass_view: z.boolean().optional(),
+  notifications: z.boolean().optional(),
+  weekly_reports: z.boolean().optional()
+})
+
 export const productUpdateSchema = createProductSchema.partial()
 export const productDeleteSchema = businessIDSchema.merge(productIDSchema)
 export const businessUpdateSchema = businessIDSchema.merge(businessAddressSchema.partial())

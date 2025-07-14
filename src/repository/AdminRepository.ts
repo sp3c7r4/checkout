@@ -8,7 +8,6 @@ class AdminRepository extends BaseRepository {
   constructor() {
     super(admin);
   }
-
   
   async readOneById(id: string): Promise<any> {
     try {
@@ -32,6 +31,8 @@ class AdminRepository extends BaseRepository {
           business: {
             with: {
               address: true,
+              spreadsheet: true,
+              settings: true
             },
           },
         },

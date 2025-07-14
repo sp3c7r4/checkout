@@ -8,6 +8,7 @@ import CheckoutEmitter from "../../Event";
 import { getBusinessById } from "../../helpers/business";
 import { getUserById } from "../../helpers/user";
 import { getEmoji } from "../../utils/Emoji";
+import UserRepository from "../../repository/UserRepository";
 
 export const checkProductByNameTool = createTool({
   id: "checkProductByNameTool",
@@ -134,7 +135,7 @@ export const removeFromCartTool = createTool({
         product_id
       );
       if (!resp) return { success: false, data: {} };
-      return { success: true, data: resp };
+      return { success: true, data: { msg: "Product removed successfully"} };
     } catch (e) {
       if (e instanceof CustomError) {
         const { message: msg } = e;
@@ -169,17 +170,24 @@ export const readCartItems = createTool({
         business_id
       );
       console.log(getEmoji('mango'))
-      const mutate_cart = MutateCartProducts(resp.products);
-      const message = `<b>List of items in your cart</b>\n`;
+      console.log(resp.length, resp)
+      const mutate_cart = resp.products.length > 0 ? MutateCartProducts(resp.products) : ``;
+      const message = resp.products.length > 0 ? `<b>List of items in your cart</b>\n` : `<b>No items found in your cart</b>\n`;
       const reply_markup = {
-        inline_keyboard: [
-          [
-            ...resp.products.map((product) => ({
-              text: `Edit ${product.name[0].toUpperCase()}${product.name.slice(1)}/Remove ${product.name[0].toUpperCase()}${product.name.slice(1)} ${getEmoji(product.name)}`,
-              callback_data: `cartProductId_${product.id}`
-            }))
-          ]
-        ]
+        inline_keyboard: resp.products.reduce((acc, product, index) => {
+          const button = {
+        text: `Edit ${product.name[0].toUpperCase()}${product.name.slice(1)}/Remove ${product.name[0].toUpperCase()}${product.name.slice(1)} ${getEmoji(product.name)}`,
+        callback_data: `cartProductId_${product.id}`
+          };
+          
+          if (index % 2 === 0) {
+        acc.push([button]);
+          } else {
+        acc[acc.length - 1].push(button);
+          }
+          
+          return acc;
+        }, [] as any[])
       };
       CheckoutEmitter.emit("readCartItems", {
         data: mutate_cart,
@@ -243,4 +251,35 @@ export const readAllStoreProducts = createTool({
   },
 });
 
-// export const 
+export const storeUserEmailPhoneTool = createTool({
+  id: "storeUserEmailPhoneTool",
+  description: "This tool is used to store the user's email and phone number",
+  inputSchema: z.object({
+    user_id: z.string().describe("The user ID of the person storing the email and phone number"),
+    email: z.string().email().describe("The email address of the user"),
+    phone: z.string().describe("The phone number of the user with country code"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    data: z.object({
+      msg: z.string().optional(),
+    }),
+  }),
+  execute: async ({ context: { user_id, email, phone } }) => {
+    try {
+      const [_, resp] = await Promise.all([getUserById(user_id), UserRepository.updateModel(user_id, { email, phone })]);
+      if (!resp) return { success: false, data: { msg: "Failed to update user information" } };
+      CheckoutEmitter.emit("storeEmailPhone", { user_id, message: `<b>Email and Phone updated successfully</b>` });
+      return { success: true, data: { msg: "User information updated successfully" } };
+    } catch (e) {
+      if (e instanceof CustomError) {
+        const { message: msg } = e;
+        return { success: false, data: { msg } };
+      }
+      return {
+        success: false,
+        data: { msg: e instanceof Error ? e.message : String(e) },
+      };
+    }
+  },
+});

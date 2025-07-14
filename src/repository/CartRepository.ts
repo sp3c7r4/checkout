@@ -135,24 +135,50 @@ class CartRepository extends BaseRepository {
     }
   }
 
+  // async removeProductFromCart(user_id: string, business_id: string, product_id: string) {
+    // try {
+    //   const existingCart = await this.readCartByUserAndBusiness(user_id, business_id);
+    //   if (!existingCart || !existingCart.products) {
+    //     throw new CE_INTERNAL_SERVER("Cart not found or empty");
+    //   }
+
+    //   const products = existingCart.products as CartProduct[];
+    //   const updatedProducts = products.filter(product => product.id !== product_id);
+
+    //   if (updatedProducts.length === products.length) {
+    //     throw new CE_INTERNAL_SERVER("Product not found in cart");
+    //   }
+
+    //   const total_price: number = updatedProducts.reduce((sum, product) => {
+    //     return sum + (Number(product.price) * Number(product.quantity));
+    //   }, 0);
+
+    //   const total_kg: number = updatedProducts.reduce((totalWeight, product) => {
+    //     return totalWeight + (Number(product.kg || 0) * Number(product.quantity));
+    //   }, 0);
+
+    //   const updatedCart = await db.update(this.model).set({
+    //     products: updatedProducts,
+    //     total_price,
+    //     total_kg
+    //   }).where(eq(this.model.id, existingCart.id)).returning();
+
+    //   return updatedCart;
+    // } catch (err) {
+    //   throw new CE_INTERNAL_SERVER(err.message);
+    // }
+  // }
   async removeProductFromCart(user_id: string, business_id: string, product_id: string) {
     try {
       const existingCart = await this.readCartByUserAndBusiness(user_id, business_id);
-      if (!existingCart || !existingCart.products) {
-        throw new CE_INTERNAL_SERVER("Cart not found or empty");
-      }
-
+      if(!existingCart || !existingCart.products) throw new CE_INTERNAL_SERVER("Cart not found or empty");
       const products = existingCart.products as CartProduct[];
       const updatedProducts = products.filter(product => product.id !== product_id);
-
-      if (updatedProducts.length === products.length) {
-        throw new CE_INTERNAL_SERVER("Product not found in cart");
-      }
+      if (updatedProducts.length === products.length) throw new CE_INTERNAL_SERVER("Product not found in cart");
 
       const total_price: number = updatedProducts.reduce((sum, product) => {
         return sum + (Number(product.price) * Number(product.quantity));
       }, 0);
-
       const total_kg: number = updatedProducts.reduce((totalWeight, product) => {
         return totalWeight + (Number(product.kg || 0) * Number(product.quantity));
       }, 0);
@@ -160,9 +186,8 @@ class CartRepository extends BaseRepository {
       const updatedCart = await db.update(this.model).set({
         products: updatedProducts,
         total_price,
-        total_kg
+        total_kg: 0
       }).where(eq(this.model.id, existingCart.id)).returning();
-
       return updatedCart;
     } catch (err) {
       throw new CE_INTERNAL_SERVER(err.message);
@@ -174,9 +199,39 @@ class CartRepository extends BaseRepository {
       const existingCart = await this.readCartByUserAndBusiness(user_id, business_id);
       if (!existingCart) throw new CE_INTERNAL_SERVER("Cart not found");
 
-      const updatedProducts = [...existingCart.products, product];
-      const total_price = updatedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
-      const total_kg = updatedProducts.reduce((sum, p) => sum + p.kg * p.quantity, 0);
+      const existingProducts = existingCart.products || [];
+      
+      // Find if product already exists in cart
+      const existingProductIndex = existingProducts.findIndex(
+        (p: any) => p.id === product.id && p.name === product.name
+      );
+
+      let updatedProducts: any[];
+
+      if (existingProductIndex !== -1) {
+        // Product exists, merge quantities
+        updatedProducts = [...existingProducts];
+        const existingProduct = updatedProducts[existingProductIndex];
+        
+        updatedProducts[existingProductIndex] = {
+          ...existingProduct,
+          quantity: existingProduct.quantity + product.quantity,
+          price: product.price, // Update to latest price
+          kg: product.kg || existingProduct.kg // Keep existing kg if not provided
+        };
+      } else {
+        // Product doesn't exist, add it to cart
+        updatedProducts = [...existingProducts, product];
+      }
+
+      // Recalculate totals
+      const total_price = updatedProducts.reduce((sum, p) => {
+        return sum + (Number(p.price) * Number(p.quantity));
+      }, 0);
+      
+      const total_kg = updatedProducts.reduce((sum, p) => {
+        return sum + (Number(p.kg || 0) * Number(p.quantity));
+      }, 0);
 
       const updatedCart = await db.update(this.model).set({
         products: updatedProducts,

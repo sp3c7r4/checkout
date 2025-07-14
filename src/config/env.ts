@@ -10,7 +10,12 @@ const EnvSchema = z.object({
   DB_HOST: z.string(),
   DB_PORT: z.string(),
   JWT_SECRET: z.string(),
-  TELEGRAM_BOT_TOKEN: z.string()
+  TELEGRAM_BOT_TOKEN: z.string(),
+  GOOGLE_CREDENTIALS_PATH: z.string(),
+  TOKEN_PATH: z.string(),
+  CHECKOUT_MAIL: z.string(),
+  IMAGE_PATH: z.string(),
+  CHECKOUT_MAIL_PASSWORD: z.string()
 })
 
 export type EnvSchema = z.infer<typeof EnvSchema>

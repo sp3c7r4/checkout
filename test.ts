@@ -80,7 +80,25 @@ import { checkoutAgent } from "./src/mastra/agents";
 // } catch (error) {
 //   console.error('Error:', error);
 // }
-console.log(await db.execute(sql`DELETE FROM storage.mastra_messages WHERE thread_id = 'telegram-01JZN6NJBVD7HMCYZ4JKHRSG3J-6178017781'`));
+// console.log(await db.execute(sql`DELETE FROM storage.mastra_messages WHERE thread_id = 'telegram-01JZN6NJBVD7HMCYZ4JKHRSG3J-6178017781'`));
+// console.log(await db.execute(sql`
+//   WITH to_delete AS (
+//     SELECT id FROM storage.mastra_messages
+//     ORDER BY createdAt
+//     OFFSET 2 LIMIT 1
+//   )
+//   DELETE FROM storage.mastra_messages
+//   WHERE id IN (SELECT id FROM to_delete);
+//   `));
+console.log(await db.execute(sql`
+  WITH to_delete AS (
+    SELECT id FROM storage.mastra_messages
+    ORDER BY "createdAt"
+    OFFSET 2 LIMIT 1
+  )
+  DELETE FROM storage.mastra_messages
+  WHERE id IN (SELECT id FROM to_delete);
+  `));
 // const tables = await db.execute(sql`
 //   SELECT table_name 
 //   FROM information_schema.tables 
@@ -124,15 +142,15 @@ console.log(await db.execute(sql`DELETE FROM storage.mastra_messages WHERE threa
 //     throw err
 //   }
 // }
-const products = [
-  {
-    name: "Sample Product",
-    price: 1500,
-    quantity: 20,
-    id: "01DUMMYPRODUCTID",
-    description: "This is a sample product for testing.",
-    image: "https://example.com/sample-product.jpg",
-  },
-];
+// const products = [
+//   {
+//     name: "Sample Product",
+//     price: 1500,
+//     quantity: 20,
+//     id: "01DUMMYPRODUCTID",
+//     description: "This is a sample product for testing.",
+//     image: "https://example.com/sample-product.jpg",
+//   },
+// ];
 
-console.log(await checkoutBot.sendMessageImage(6178017781, "Check out this product!", MutateProduct(products[0]), 'available.png'))
+// console.log(await checkoutBot.sendMessageImage(6178017781, "Check out this product!", MutateProduct(products[0]), 'available.png'))

@@ -14,16 +14,17 @@ import {
   productDeleteSchema,
   productIDSchema,
   productUpdateSchema,
+  settingsSchema,
   userSchema,
 } from "../validator/schemas";
 import { zValidator } from "@hono/zod-validator";
 import tryCatch from "../utils/TryCatch";
-import { Context } from "hono";
 import { createAdmin, loginAdmin } from "../controllers/admin.controller";
 import { validateJWT } from "../middleware/JWT";
 import { createUser, getUsers } from "../controllers/user.controller";
 import {
   createBusiness,
+  requestSpreadSheet,
   updateBusiness,
 } from "../controllers/business.controller";
 import Checkout from "../utils/checkout-bot";
@@ -37,9 +38,13 @@ import {
 } from "../controllers/product.controller";
 import { getCarts } from "../controllers/cart.controller";
 import "./../Event";
+import GoogleSheetsService, { addProductsToDatabase, getSheetDataAndMutate, run } from "../utils/GoogleSheetsService";
+import { getSettings, getSettingsByBusinessId, updateSettings } from "../controllers/settings.controller";
+import { userCheckWorkflow } from "./workflows";
 
 export const mastra = new Mastra({
   agents: { checkoutAgent },
+  workflows: { userCheckWorkflow },
   storage: new LibSQLStore({
     url: ":memory:",
   }) as any,
@@ -48,32 +53,8 @@ export const mastra = new Mastra({
     level: "info",
   }),
   server: {
-    // middleware:
     host: "0.0.0.0",
     apiRoutes: [
-      // registerApiRoute("/chat/:store_id", {
-      //   method: "GET",
-      //   handler: async (c: ContextWithMastra) => {
-      //     const store_id = c.req.param("store_id");
-      //     const user_id = c.req.query("chat_id");
-      //     const mastra = c.get("mastra");
-      //     const agents = await mastra.getAgent("checkoutAgent");
-
-      //     //* Chat
-      //     const { text } = await agents.generate([
-      //       { role: "user", content: "Hello, how can you assist me today?" },
-      //     ]);
-      //     return c.json({ message: text });
-      //   },
-      // }),
-      // registerApiRoute("/validate", {
-      //   method: "POST",
-      //   middleware: zValidator("json", storeIdSchema),
-      //   handler: tryCatch(async (c: Context) => {
-      //     return c.json({ msg: "hi" });
-      //   }),
-      // }),
-      //* Admin
       registerApiRoute("/admin/create", {
         method: "POST",
         middleware: zValidator("json", createAdminSchema) as any,
@@ -87,8 +68,8 @@ export const mastra = new Mastra({
         method: "POST",
         middleware: zValidator("json", loginAdminSchema) as any,
         handler: tryCatch(async (c: ContextWithMastra) => {
-          const { email, password } = await c.req.json();
-          const login = await loginAdmin(email, password);
+          const { email, password, ip } = await c.req.json();
+          const login = await loginAdmin(email, password, ip);
           return c.json(login, login.statusCode as any);
         }) as any,
       }),
@@ -100,6 +81,17 @@ export const mastra = new Mastra({
           const { id } = admin;
           const data = await c.req.json();
           const create = await createBusiness({ ...data, admin_id: id });
+          return c.json(create, create.statusCode as any);
+        }) as any,
+      }),
+      registerApiRoute("/admin/business/request-sheet", {
+        method: "POST",
+        middleware: [validateJWT, zValidator("json", businessIDSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const admin = c.get("admin" as any);
+          const { id } = admin;
+          const data = await c.req.json();
+          const create = await requestSpreadSheet({ ...data, admin_id: id });
           return c.json(create, create.statusCode as any);
         }) as any,
       }),
@@ -130,6 +122,30 @@ export const mastra = new Mastra({
           const { business_id } = await c.req.param();
           const users = await getUsers({ business_id, admin_id: id });
           return c.json(users, users.statusCode as any);
+          // return c.json({ message: "Done", token });
+        }) as any,
+      }),
+      registerApiRoute("/admin/settings/update", {
+        method: "POST",
+        middleware: [validateJWT, zValidator("json", settingsSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const { id } = c.get("admin" as any);
+          const { business_id } = c.req.param();
+          const data = await c.req.json();
+          console.log('testing\n\n\n', data)
+          const settings = await updateSettings({ ...data, business_id, admin_id: id });
+          return c.json(settings, settings.statusCode as any);
+          // return c.json({ message: "Done", token });
+        }) as any,
+      }),
+      registerApiRoute("/admin/settings/:business_id", {
+        method: "GET",
+        middleware: [validateJWT, zValidator("param", businessIDSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const { id } = c.get("admin" as any);
+          const { business_id } = c.req.param();
+          const settings = await getSettingsByBusinessId({ business_id, admin_id: id });
+          return c.json(settings, settings.statusCode as any);
           // return c.json({ message: "Done", token });
         }) as any,
       }),
@@ -210,6 +226,15 @@ export const mastra = new Mastra({
           const products = await getCarts(id, business_id);
           return c.json(products, products.statusCode || 200 as any);
           // return c.json({ message: "Done", token });
+        }) as any,
+      }),
+      registerApiRoute("/admin/test", {
+        method: "GET",
+        // middleware: [validateJWT, zValidator("param", businessIDSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          await addProductsToDatabase("1FOqdHbbdpV1o69Lmz9yih1P8BhkLJilyzRuta8d0WmA", '01JZN6NJBVD7HMCYZ4JKHRSG3J');
+          // await run()
+          return c.json({ msg: "Hi" }, 200 as any);
         }) as any,
       }),
     ],

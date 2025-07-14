@@ -42,6 +42,20 @@ class UserBusinessRepository extends BaseRepository {
   //   }
   // }
 
+  async readUserByIdandBusinessId(
+    user_id: string,
+    business_id: string): Promise<any> {
+    try {
+      const userBusiness = await db.query.userBusiness.findFirst({
+        where: (ub, { eq, and }) =>
+          and(eq(ub.user_id, Number(user_id)), eq(ub.business_id, business_id)),
+      });
+      return userBusiness;
+    } catch (err) {
+      throw new CE_INTERNAL_SERVER(err.message);
+    }
+  }
+
   async readUsersByBusinessId(business_id: string) {
     try {
       const users = await db.query.userBusiness.findMany({
@@ -72,7 +86,7 @@ class UserBusinessRepository extends BaseRepository {
       const find_user = await UserRepository.readOneById(user_id as any);
       if (!find_user) {
         ctx.reply(
-          `It seems this is your first time using the checkout with ${business_name ? business_name : "this store"}. Please wait while we create your account.`
+          `It seems this is your first time using checkout. Please wait while we setup your account.`
           // { parse_mode: 'MarkdownV2' }
         );
         await UserRepository.create({
@@ -84,13 +98,23 @@ class UserBusinessRepository extends BaseRepository {
         });
       }
 
-      const user_link_business = await this.readOneById(user_id as any);
-      if (!user_link_business) await this.create({ user_id, business_id });
+      const user_link_business = await this.readUserByIdandBusinessId(user_id as any, business_id);
+      if (!user_link_business) {
+        const { message_id } = await ctx.reply(`You are not linked to this business. We will link you now.`);
+        await this.create({ user_id, business_id });
+        await ctx.telegram.editMessageText(
+          ctx.chat?.id,
+          message_id,
+          undefined,
+          `You have been successfully linked to ${business_name || 'this business'}.`
+        );
+      }
 
       const check_cart = await CartRepository.readCartByUserAndBusiness(
         user_id as any,
         business_id
       );
+      console.log(check_cart, business_id)
       if (!check_cart) {
         ctx.reply(
           `A new cart has been created for you.`

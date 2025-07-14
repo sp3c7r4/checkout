@@ -2,22 +2,27 @@ import {
   getAdminById,
 } from "../helpers/admin";
 import { getBusinessById, validateIfBusinessExists } from "../helpers/business";
+import { validateIfSheetExists } from "../helpers/sheet";
 import AddressRepository from "../repository/AddressRepository";
 import BusinessRepository from "../repository/BusinessRepository";
+import SettingsRepository from "../repository/SettingsRepository";
+import SpreadSheetRepository from "../repository/SpreadSheetRepository";
 import BusinessResource from "../resource/business";
+import SpreadSheetResource from "../resource/sheet";
+import checkoutGoogleSheetsService from "../utils/GoogleSheetsService";
 import { CREATED, OK } from "../utils/Response";
 
 export async function createBusiness(data: any) {
   const { name, email, admin_id, street, state, country } = data;
-  await getAdminById(admin_id);
-  await validateIfBusinessExists(admin_id);
+  await Promise.all([
+    getAdminById(admin_id),
+    validateIfBusinessExists(admin_id)
+  ]);
   const create = await BusinessRepository.create({ name, email, admin_id });
-  const create_address = await AddressRepository.create({
-    business_id: create.id,
-    street,
-    state,
-    country,
-  });
+  const [create_address ] = await Promise.all([
+    await AddressRepository.create({ business_id: create.id, street, state, country, }),
+    await SettingsRepository.create({ business_id: create.id })
+  ])
   const res = { ...BusinessResource({ ...create, address: create_address }) };
   return CREATED(`Business created successfully`, res);
 }
@@ -45,4 +50,27 @@ export async function updateBusiness(data: any) {
     ...BusinessResource({ ...business_update, address: address_update }),
   };
   return OK(`Business updated successfully`, res);
+}
+
+export async function requestSpreadSheet(data: any) {
+  const { admin_id, business_id } = data;
+  const [ _, { name, email } ] = await Promise.all([ getAdminById(admin_id), getBusinessById(business_id), validateIfSheetExists(business_id) ]);
+  console.time('Creating sheet')
+  const sheet = await checkoutGoogleSheetsService.createSpreadsheetWithTemplate(
+    `Business - ${name}`, checkoutGoogleSheetsService.getTemplate('store'),
+  );
+  console.timeEnd('Creating sheet')
+  console.time('Getting Sheet')
+  await checkoutGoogleSheetsService.shareWithSpecificUsers(sheet.spreadsheetId, [ email ]);
+  console.timeEnd('Getting Sheet')
+  console.time('Saving sheet to db')
+  const db = await SpreadSheetRepository.create({
+    name: `Business - ${name}`,
+    spreadsheet_id: sheet.spreadsheetId,
+    url: sheet.spreadsheetUrl,
+    business_id,
+  });
+  console.timeEnd('Saving sheet to db')
+  const res = SpreadSheetResource(db)
+  return CREATED(`Spreadsheet created successfully`, res);
 }

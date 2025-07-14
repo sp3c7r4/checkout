@@ -26,15 +26,21 @@ export default class BaseRepository {
     }
   }
 
-  async createMany(data: Array<object>) {
-    validateDataCheck(data);
-    try {
-      const encrypted_data = data.map((val) => encryptDataPassword(val));
-      return await db.insert(this.model).values(encrypted_data);
-    } catch (err) {
-      throw new CE_INTERNAL_SERVER(err.message);
-    }
+async createMany(data: Array<object>) {
+  validateDataCheck(data);
+  try {
+    // Process each item individually to handle encryption properly
+    const encrypted_data = await Promise.all(
+      data.map(async (val) => await encryptDataPassword(val))
+    );
+    
+    const result = await db.insert(this.model).values(encrypted_data).returning();
+    return result;
+  } catch (err) {
+    console.error('Error in createMany:', err);
+    throw new CE_INTERNAL_SERVER(err.message);
   }
+}
 
   async readOneById(id: string) {
     try {

@@ -1,7 +1,13 @@
 import { relations, sql } from "drizzle-orm";
-import { pgTable, varchar, json, integer, bigint } from "drizzle-orm/pg-core";
+import { pgTable, varchar, json, integer, bigint, text, timestamp } from "drizzle-orm/pg-core";
 import { ulid } from 'ulid';
 import { CartProduct } from "../types/product";
+
+interface Settings {
+    name: string;
+    description: string;
+    state: boolean;
+  }
 
 export const admin = pgTable('admin', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
@@ -26,11 +32,24 @@ export const address = pgTable('address', {
   business_id: varchar({ length: 26 }).references(() => business.id, {onDelete: "cascade"}),
 });
 
+export const logs = pgTable('logs', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  type: varchar({ length: 255 }).notNull(),
+  ip: varchar({ length: 255 }).notNull(),
+  message: text().notNull(),
+  timestamp: timestamp().notNull().default(sql`now()`),
+  business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
+});
+
 export const product = pgTable('product', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
   name: varchar({ length: 255 }).notNull(),
   image: varchar({ length: 255 }).notNull(),
   price: varchar({ length: 255 }).notNull(),
+  //New fields
+  category: varchar({ length: 255 }).notNull().$default(() => 'general'),
+  barcode: varchar({ length: 255 }).notNull().$default(() => ''),
+  //End of New Fields
   kg: varchar({ length: 255 }).notNull(),
   quantity: integer().notNull().$default(() => 0),
   description: varchar({ length: 255 }).notNull().$default(() => ''),
@@ -42,6 +61,8 @@ export const user = pgTable('user', {
   first_name: varchar('first_name', { length: 255 }),
   last_name: varchar('last_name', { length: 255 }),
   username: varchar('username', {length: 255}),
+  email: varchar('email', { length: 255 }).unique(),
+  phone: varchar('phone', { length: 255 }),
   current_business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
 })
 
@@ -52,6 +73,29 @@ export const cart = pgTable('cart', {
   business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
   total_price: integer().notNull().$default(() => 0),
   total_kg: integer().notNull().$default(() => 0),
+})
+
+export const spreadsheet = pgTable('spreadsheet', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  name: varchar({ length: 255 }).notNull(),
+  spreadsheet_id: varchar({ length: 255 }).notNull(),
+  url: varchar({ length: 255 }).notNull(),
+  business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
+});
+
+export const checkoutStates = pgTable('checkout_states', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  name: varchar({ length: 255 }).notNull(),
+  value: varchar({ length: 255 }).notNull(),
+  description: varchar({ length: 255 }),
+})
+
+export const settings = pgTable('settings', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  mass_view: json().$type<Settings>().notNull().$default(() => ({ name: "Sheet Mass View", description: "Allow's sheet to be public.", state: false })),
+  notifications: json().$type<Settings>().notNull().$default(() => ({ name: "Enable Notifications", description: "Receive email and SMS alerts for orders and updates.", state: false })),
+  weekly_reports: json().$type<Settings>().notNull().$default(() => ({ name: "Weekly Reports", description: "Receive weekly performance and sales reports automatically.", state: false })),
+  business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
 })
 
 export const userBusiness = pgTable('user_business', {
@@ -95,6 +139,14 @@ export const businessRelations = relations(business, ({ one, many }) => ({
     fields: [business.id],
     references: [address.business_id]
   }),
+  spreadsheet: one(spreadsheet, {
+    fields: [business.id],
+    references: [spreadsheet.business_id]
+  }),
+  settings: one(settings, {
+    fields: [business.id],
+    references: [settings.business_id]
+  }),
   products: many(product),
   users: many(userBusiness),
   carts: many(cart)
@@ -124,6 +176,3 @@ export const cartRelations = relations(cart, ({ one }) => ({
     references: [business.id]
   })
 }))
-
-
-//? Existing tables

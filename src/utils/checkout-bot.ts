@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply } from 'telegraf/typings/core/types/typegram';
 import ProductRepository from '../repository/ProductRepository';
 import CartRepository from '../repository/CartRepository';
+import { deleteWithIndex } from '../helpers';
 
 interface CheckoutSession {
   currentProduct?: {
@@ -24,7 +25,7 @@ interface CheckoutSession {
   quantityMessageId?: number; // Add this line
 }
 
-interface MyContext extends Context {
+export interface MyContext extends Context {
   currentMessageId?: number;
   currentResponse?: string;
   session: CheckoutSession;
@@ -108,7 +109,7 @@ export default class Checkout {
   }
 
   async sendMessageImage(chatId: number | string, message: string, data: any, image: string, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined = undefined) {
-    message = `${message}\n${data ? data.trim() : undefined}`
+    message = `${message}\n${data ? data?.trim() : ``}`
     
     const imagePath = path.join(__dirname, `../../src/assets/${image}`);
     reply_markup = reply_markup || {};
@@ -138,6 +139,17 @@ export default class Checkout {
       this.BotSendMessageState = false
       this.sendMessageImage(user_id, message, data, 'cart.png', reply_markup);
     })
+    
+    CheckoutEmitter.on('removedCartItem', ({user_id, message, data, reply_markup}) => {
+      console.log("Removed Cart item event - CALLED !!!")
+      this.sendMessageImage(user_id, message, data, 'removed.png', reply_markup);
+    })
+
+    CheckoutEmitter.on('storeEmailPhone', ({ user_id, message, data }) => {
+      console.log("Store email and phone event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, data, 'available.png');
+    });
   }
 
   private setupMiddleware() {
@@ -173,7 +185,25 @@ export default class Checkout {
     this.bot.on('callback_query', async (ctx) => {
       const data = 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
       if(!data) throw new Error('Invalid callback data!')
-
+      if (data === 'cart_operation_cancel') {
+        ctx.session.step = 'idle';
+        ctx.session.currentProduct = undefined;
+        ctx.session.quantity = '';
+        ctx.session.quantityMessageId = undefined;
+        await ctx.answerCbQuery('Cart operation canceled 😊⚡');
+        await ctx.reply('Cart operation canceled. 😊⚡');
+        this.BotSendMessageState = true;
+        return;
+      }
+      if(data.startsWith('removeProductId_')) {
+        const productId = data.replace('removeProductId_', '');
+        const product = await ProductRepository.readOneById(productId)
+        if(!product) throw new Error('Invalid Product. Not found😑');
+        const userId = String(ctx.from.id)
+        const { current_business_id } = await getUserById(userId);
+        CartRepository.removeProductFromCart(userId, current_business_id, productId);
+        CheckoutEmitter.emit('removedCartItem', { user_id: userId, message: `${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()} removed successfully`});
+      }
       if (data.startsWith('addToCart_')) {
         const productId = data.replace('addToCart_', '');
         const product = await ProductRepository.readOneById(productId);
@@ -198,7 +228,10 @@ export default class Checkout {
         );
 
         ctx.session.quantityMessageId = message.message_id;
-      } else if (data.startsWith('cartProductId_')) {
+        this.BotSendMessageState = false;
+        return;
+      }
+      if (data.startsWith('cartProductId_')) {
         const productId = data.replace('cartProductId_', '');
         const product = await ProductRepository.readOneById(productId);
         if (!product) return await ctx.answerCbQuery('Product not found');
@@ -215,18 +248,19 @@ export default class Checkout {
             { text: "Remove Product", callback_data: `removeProductId_${productId}` },
           ],
           [
-            { text: "Cancel", callback_data: `cancel` },
+            { text: "Cancel", callback_data: `cart_operation_cancel` },
           ],
         ],
       };
 
-        CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
-        await ctx.answerCbQuery(`You selected ${product.name}`);
-      } else if (ctx.session.step === 'entering_quantity') {
-        await this.handleNumberKeyboard(ctx, data);
-      } else {
-        await ctx.answerCbQuery('Unknown option');
+      CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
+      this.BotSendMessageState = false;
+      return await ctx.answerCbQuery(`You selected ${product.name}`);
+      } 
+      if (ctx.session.step === 'entering_quantity') {
+        return await this.handleNumberKeyboard(ctx, data);
       }
+      await ctx.answerCbQuery('Unknown option');
     });
   }
 
@@ -245,14 +279,14 @@ export default class Checkout {
       }
       const name = ctx.from.first_name || 'there';
       const message = businessInfo
-        ? `Hello ${name}, welcome to *${businessInfo.name}*! 👋\nI'm here to assist you with anything you need.`
-        : `Hello ${name}! 👋\nI'm your AI assistant, ready to help you with anything you need.`;
-      return ctx.reply(this.escapeMarkdown(message), { parse_mode: 'MarkdownV2' });
+        ? `Hello ${name}, welcome to <b>${businessInfo.name}</b>! 👋\nI'm Checkout and i'll be your assistant, ready to help you with anything you need.`
+        : `Hello ${name}! 👋\nI'm Checkout and i'll be your assistant, ready to help you with anything you need.`;
+      return this.sendMessageImage(ctx.from.id, message, '', 'welcome.png', );
     });
 
     // Handle /help command
     this.bot.help(async (ctx) => {
-      return ctx.reply(help_commands, { parse_mode: 'Markdown' });
+      return this.sendMessageImage(ctx.from.id, `You can use this bot with this couple of commands. Enjoy 😊`, '', 'commands.png', );
     });
 
     // Handle text messages
@@ -309,19 +343,8 @@ export default class Checkout {
         try {
           const { message } = error;
           const index = (message.match(/contents\[(\d+)\]/) || [])[1];
-          console.log('INDEX\n\n\n', index)
-          const response = await checkoutAgent.generate(text, {
-            threadId: `telegram-${current_business_id || 'default'}-${userId}`,
-            resourceId: userId,
-            context: [
-              {
-                role: 'system',
-                content: `Current user: ${firstName} (${username}) | business_id: ${current_business_id || 'none'} | user_id: ${userId}`,
-              },
-            ],
-          });
-          
-          if (this.BotSendMessageState) await ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
+          await deleteWithIndex(Number(index));
+          if (this.BotSendMessageState) await ctx.reply(this.escapeMarkdown(`I didn't get that message, could you please send it again?`), { parse_mode: 'MarkdownV2' });
         } catch (err) {
           throw err
         }
@@ -364,6 +387,7 @@ export default class Checkout {
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
+      this.BotSendMessageState = true;
 
     } catch (error) {
       console.error('Error adding to cart:', error);
@@ -374,6 +398,7 @@ export default class Checkout {
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
+      this.BotSendMessageState = true;
     }
   }
 
@@ -386,7 +411,6 @@ export default class Checkout {
 
   try {
     switch (data) {
-      console.log('Switching carts')
       case '⌫':
         // Clear/backspace
         if (ctx.session.quantity && ctx.session.quantity.length > 0) {
@@ -432,6 +456,7 @@ export default class Checkout {
           await ctx.answerCbQuery('Invalid input');
         }
     }
+    // this.BotSendMessageState = true;
   } catch (error) {
     console.error('Error handling number keyboard:', error);
     await ctx.answerCbQuery('Error processing input');

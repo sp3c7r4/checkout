@@ -1,8 +1,5 @@
-import {
-  getAdminByEmail,
-  getAdminById,
-  validateAdminByEmail,
-} from "../helpers/admin";
+import CheckoutEmitter from "../Event";
+import { getAdminByEmail, getAdminById, validateAdminByEmail, } from "../helpers/admin";
 import { getBusinessById } from "../helpers/business";
 import { generateJWT } from "../middleware/JWT";
 import AdminRepository from "../repository/AdminRepository";
@@ -23,17 +20,18 @@ export async function createAdmin(data: any) {
   return CREATED(`Admin created successfully`, create);
 }
 
-export async function loginAdmin(email: string, password: string) {
+export async function loginAdmin(email: string, password: string, ip: string) {
   const admin = await getAdminByEmail(email);
+  console.log(admin)
   const data = {
     admin: AdminResource(admin),
-    business: admin.business ? BusinessResource(admin.business) : undefined,
+    business: admin.business ? BusinessResource(admin.business) : undefined
   };
 
   const decrypt_pass = await verifyToken(password, admin.password);
   const token = await generateJWT({ admin: AdminResource(admin) });
   if (!decrypt_pass) return BAD_REQUEST(`Incorrect credentials 😔`);
-
+  CheckoutEmitter.emit("sendLoginMail", { email: admin.email, name: admin.first_name, ip, });
   return OK(`Admin login successfully`, { ...data, token });
 }
 
