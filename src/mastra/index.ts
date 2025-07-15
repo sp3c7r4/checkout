@@ -15,6 +15,7 @@ import {
   productIDSchema,
   productUpdateSchema,
   settingsSchema,
+  syncSheetSchema,
   userSchema,
 } from "../validator/schemas";
 import { zValidator } from "@hono/zod-validator";
@@ -25,9 +26,10 @@ import { createUser, getUsers } from "../controllers/user.controller";
 import {
   createBusiness,
   requestSpreadSheet,
+  syncSheet,
   updateBusiness,
 } from "../controllers/business.controller";
-import Checkout from "../utils/checkout-bot";
+// import Checkout from "../utils/checkout-bot";
 import env from "../config/env";
 import {
   createProduct,
@@ -228,17 +230,21 @@ export const mastra = new Mastra({
           // return c.json({ message: "Done", token });
         }) as any,
       }),
-      registerApiRoute("/admin/test", {
-        method: "GET",
-        // middleware: [validateJWT, zValidator("param", businessIDSchema)] as any,
+      registerApiRoute("/admin/business/sync-sheet", {
+        method: "POST",
+        middleware: [validateJWT, zValidator("json", syncSheetSchema)] as any,
         handler: tryCatch(async (c: ContextWithMastra) => {
-          await addProductsToDatabase("1FOqdHbbdpV1o69Lmz9yih1P8BhkLJilyzRuta8d0WmA", '01JZN6NJBVD7HMCYZ4JKHRSG3J');
-          // await run()
-          return c.json({ msg: "Hi" }, 200 as any);
+          const { id } = c.get("admin" as any);
+          const data = await c.req.json();
+          const res = await syncSheet({ ...data, admin_id: id });
+          return c.json(res, res.statusCode || 200 as any);
+          // // await getSheetDataAndMutate("1VTyfAzRhxX0hg9_xWL9UyzYLeDuc4x7Olu8CrmjvL5U");
+          // await addProductsToDatabase('1VTyfAzRhxX0hg9_xWL9UyzYLeDuc4x7Olu8CrmjvL5U', '01K04TYQ49QD4B41C1059H5GJX');
+          // return c.json({ msg: "Hi" })
         }) as any,
       }),
     ],
   },
 });
 
-export const checkoutBot = new Checkout(env.TELEGRAM_BOT_TOKEN);
+// export const checkoutBot = new Checkout(env.TELEGRAM_BOT_TOKEN);

@@ -6,3 +6,8 @@ export async function getProductById(id: string) {
   if (!business) throw new CE_BAD_REQUEST(`Product doesn't exist`);
   return business;
 }
+
+// export async function getProductByIdAndBusinessId(id: string, business_id: string) {
+//   const product = await ProductRepository.readProductsByBusinessIdAndProductId(business_id, id)
+//   if(!product) throw new 
+// }

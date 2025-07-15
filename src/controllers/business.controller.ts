@@ -2,14 +2,14 @@ import {
   getAdminById,
 } from "../helpers/admin";
 import { getBusinessById, validateIfBusinessExists } from "../helpers/business";
-import { validateIfSheetExists } from "../helpers/sheet";
+import { getSheetById, validateIfSheetExists } from "../helpers/sheet";
 import AddressRepository from "../repository/AddressRepository";
 import BusinessRepository from "../repository/BusinessRepository";
 import SettingsRepository from "../repository/SettingsRepository";
 import SpreadSheetRepository from "../repository/SpreadSheetRepository";
 import BusinessResource from "../resource/business";
 import SpreadSheetResource from "../resource/sheet";
-import checkoutGoogleSheetsService from "../utils/GoogleSheetsService";
+import checkoutGoogleSheetsService, { addProductsToDatabase } from "../utils/GoogleSheetsService";
 import { CREATED, OK } from "../utils/Response";
 
 export async function createBusiness(data: any) {
@@ -73,4 +73,13 @@ export async function requestSpreadSheet(data: any) {
   console.timeEnd('Saving sheet to db')
   const res = SpreadSheetResource(db)
   return CREATED(`Spreadsheet created successfully`, res);
+}
+
+export async function syncSheet(data: any) {
+  const { admin_id, business_id, spreadsheet_id } = data;
+  console.log({ admin_id, business_id, spreadsheet_id })
+  const [ a, b, sheet ] = await Promise.all([ getAdminById(admin_id), getBusinessById(business_id), getSheetById(spreadsheet_id) ]);
+  console.log({ admin_id, business_id, sheet })
+  const sync = await addProductsToDatabase(sheet.spreadsheet_id, business_id);
+  return OK(`Products synced successfully`, sync);
 }

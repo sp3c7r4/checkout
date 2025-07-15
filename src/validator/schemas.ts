@@ -64,6 +64,9 @@ export const settingsSchema = z.object({
   weekly_reports: z.boolean().optional()
 })
 
+export const syncSheetSchema = businessIDSchema.merge(z.object({
+  spreadsheet_id: z.string().min(1)
+}))
 export const productUpdateSchema = createProductSchema.partial()
 export const productDeleteSchema = businessIDSchema.merge(productIDSchema)
 export const businessUpdateSchema = businessIDSchema.merge(businessAddressSchema.partial())

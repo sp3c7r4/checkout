@@ -32,6 +32,17 @@ class ProductRepository extends BaseRepository {
     }
   }
 
+  async readProductsByBusinessIdAndBarcode(business_id: string, barcode: string) {
+    try {
+      const product = await db.query.product.findFirst({
+        where: (p, { eq, and }) => and(eq(p.business_id, business_id), eq(p.barcode, barcode))
+      })
+      return product
+    } catch(e) {
+      throw new CE_INTERNAL_SERVER(e.message);
+    }
+  }
+
   async readProductByBusinessIdAndProductName(business_id: string, product_name: string) {
     try {
       const product = await db.query.product.findFirst({

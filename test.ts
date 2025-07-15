@@ -6,6 +6,9 @@ import { checkoutBot } from "./src/mastra";
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { checkoutAgent } from "./src/mastra/agents";
+import ProductRepository from "./src/repository/ProductRepository";
+
+console.log(await ProductRepository.readProductsByBusinessIdAndBarcode('01K06A6FZXV205X5GA5H3AX2QD', '12345'))
 // import { checkProductTool } from "./src/mastra/tools";
 // import AdminRepository from "./src/repository/AdminRepository";
 // import BusinessRepository from "./src/repository/BusinessRepository";
@@ -90,15 +93,15 @@ import { checkoutAgent } from "./src/mastra/agents";
 //   DELETE FROM storage.mastra_messages
 //   WHERE id IN (SELECT id FROM to_delete);
 //   `));
-console.log(await db.execute(sql`
-  WITH to_delete AS (
-    SELECT id FROM storage.mastra_messages
-    ORDER BY "createdAt"
-    OFFSET 2 LIMIT 1
-  )
-  DELETE FROM storage.mastra_messages
-  WHERE id IN (SELECT id FROM to_delete);
-  `));
+// console.log(await db.execute(sql`
+//   WITH to_delete AS (
+//     SELECT id FROM storage.mastra_messages
+//     ORDER BY "createdAt"
+//     OFFSET 2 LIMIT 1
+//   )
+//   DELETE FROM storage.mastra_messages
+//   WHERE id IN (SELECT id FROM to_delete);
+//   `));
 // const tables = await db.execute(sql`
 //   SELECT table_name 
 //   FROM information_schema.tables 

@@ -6,6 +6,7 @@ import { it } from 'zod/v4/locales';
 import { db } from '../db';
 import { checkoutStates } from '../db/schema';
 import env from '../config/env';
+import { CE_INTERNAL_SERVER } from './Error';
 
 const scope = [
   'https://www.googleapis.com/auth/drive.file',
@@ -179,7 +180,7 @@ class GoogleSheetsService {
           startRowIndex: 0,
           endRowIndex: 1,
           startColumnIndex: 0,
-          endColumnIndex: 5
+          endColumnIndex: 6
         },
         cell: {
           userEnteredFormat: {
@@ -195,7 +196,7 @@ class GoogleSheetsService {
           sheetId,
           startRowIndex: 0,
           endRowIndex: 1,
-          startColumnIndex: 5,
+          startColumnIndex: 6,
           endColumnIndex: headers.length
         },
         cell: {
@@ -273,7 +274,7 @@ class GoogleSheetsService {
       employee: ['Employee ID', 'Name', 'Department', 'Position', 'Start Date', 'Salary'],
       sales: ['Date', 'Customer', 'Product', 'Quantity', 'Unit Price', 'Total', 'Status'],
       project: ['Task', 'Assigned To', 'Due Date', 'Status', 'Priority', 'Notes'],
-      store: ['Product Name', 'Image Link', 'Price', 'KG', 'Stock Quantity', 'Description', 'Barcode', 'Category'],
+      store: ['Product Name', 'Image Link', 'Price', 'KG', 'Stock Quantity', 'Barcode', 'Description', 'Category'],
     };
     return templates[templateName] || [];
   }
@@ -289,20 +290,42 @@ class GoogleSheetsService {
   }
 }
 
-export async function getSheetDataAndMutate(spreadsheetId: string) {
-  const checkoutGoogleSheetsService = new GoogleSheetsService();
-  await checkoutGoogleSheetsService.initialize();
+export async function getSheetDataAndMutate(spreadsheetId: string, business_id: string) {
   const response: any = await checkoutGoogleSheetsService.getSheetData(
     spreadsheetId
   );
+  console.log("Response fetching data...", response)
     let cleanData: any = [];
+    let updateResults: any = [];
     for (const item of response.slice(1)) {
-      const check = item[0] && item[1] && item[2] && item[3] && item[4] ? true : false;
+      const check = item[0] && item[1] && item[2] && item[3] && item[4] && item[5] ? true : false;
+      console.log(item[5])
       if(item.length >= 5 && item.filter((i: any) => i !== "").length >= 5 && check) {
-        const product = { name: item[0].toString().toLowerCase(), image: item[1].toString(), price: item[2].toString(), kg: item[3].toString(), quantity: Number(item[4] || 0), description: item[5].toString() || '', barcode: item[6]?.toString() || '', category: item[7]?.toString()?.toLowerCase() || 'general' };
-        cleanData.push(product);
+        const product = { name: item[0].toString().toLowerCase(), image: item[1].toString(), price: item[2].toString(), kg: item[3].toString(), quantity: Number(item[4] || 0), barcode: item[5].toString() || '', description: item[6]?.toString() || '', category: item[7]?.toString()?.toLowerCase() || 'general' };
+        const find_product_in_db = await ProductRepository.readProductsByBusinessIdAndBarcode(business_id, item[5]?.toString() || '');
+        console.log("Product found: \n",find_product_in_db)
+        if (find_product_in_db) {
+          // Check if any field is different and update if needed
+          const updates: any = {};
+          if (find_product_in_db.name !== product.name) updates.name = product.name;
+          if (find_product_in_db.image !== product.image) updates.image = product.image;
+          if (find_product_in_db.price !== product.price) updates.price = product.price;
+          if (find_product_in_db.kg !== product.kg) updates.kg = product.kg;
+          if (find_product_in_db.quantity !== product.quantity) updates.quantity = product.quantity;
+          if (find_product_in_db.description !== product.description) updates.description = product.description;
+          if (find_product_in_db.category !== product.category) updates.category = product.category;
+          
+          if (Object.keys(updates).length > 0) {
+            const res = await ProductRepository.updateModel(find_product_in_db.id, updates);
+            updateResults.push(res)
+          }
+        } else {
+          cleanData.push(product);
+        }
       }
     }
+    console.log("Clean data", cleanData);
+    console.log('Updates', updateResults);
     return cleanData;
 }
 
@@ -317,12 +340,17 @@ export async function run() {
 }
 
 export async function addProductsToDatabase(spreadsheetId: string, businessId: string) {
-  const response: any = await getSheetDataAndMutate(spreadsheetId);
-  console.log('Response from Google Sheets:', response);
-  const mutateProducts = response.map((item: any) => ({ ...item, business_id: businessId }));
-  const createdProducts = await ProductRepository.createMany(mutateProducts);
-  console.log('Created Products:', createdProducts);
-  return createdProducts;
+  try {
+    console.log('Adding products to database from spreadsheet:', spreadsheetId, businessId);
+    const response: any = await getSheetDataAndMutate(spreadsheetId, businessId);
+    console.log('Response from Google Sheets:', response);
+    const mutateProducts = response.map((item: any) => ({ ...item, business_id: businessId }));
+    const createdProducts = await ProductRepository.createMany(mutateProducts);
+    console.log('Created Products:', createdProducts);
+    return createdProducts;
+  } catch(e) {
+    throw new CE_INTERNAL_SERVER(`Error syncing sheets: ${e.message}`);
+  }
 }
 
 const checkoutGoogleSheetsService = new GoogleSheetsService();

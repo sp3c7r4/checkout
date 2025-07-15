@@ -10,6 +10,14 @@ export async function getSheeetByBusinessId(business_id: string) {
   return sheet;
 }
 
+export async function getSheetById(spreadsheet_id: string) {
+  const sheet = await db.query.spreadsheet.findFirst({
+    where: (spreadsheet, { eq }) => eq(spreadsheet.id, spreadsheet_id),
+  });
+  if(!sheet) throw new CE_BAD_REQUEST(`Sheet doesn't exist`);
+  return sheet;
+}
+
 export async function validateIfSheetExists(business_id: string) {
   const sheet = await db.query.spreadsheet.findFirst({
     where: (spreadsheet, { eq }) => eq(spreadsheet.business_id, business_id),
