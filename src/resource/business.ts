@@ -14,6 +14,7 @@ export default function BusinessResource(model: any) {
     id: model.id,
     name: model.name,
     email: model.email,
+    image: model.image,
     address: model.address ? AddressResource(model.address) : undefined,
     spreadsheet: model.spreadsheet ? SpreadSheetResource(model.spreadsheet) : undefined,
     settings: model.settings ? SettingsResource(model.settings) : undefined,

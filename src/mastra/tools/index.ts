@@ -9,6 +9,7 @@ import { getBusinessById } from "../../helpers/business";
 import { getUserById } from "../../helpers/user";
 import { getEmoji } from "../../utils/Emoji";
 import UserRepository from "../../repository/UserRepository";
+import Paystack from "../../utils/Paystack";
 
 export const checkProductByNameTool = createTool({
   id: "checkProductByNameTool",
@@ -267,7 +268,8 @@ export const storeUserEmailPhoneTool = createTool({
   }),
   execute: async ({ context: { user_id, email, phone } }) => {
     try {
-      const [_, resp] = await Promise.all([getUserById(user_id), UserRepository.updateModel(user_id, { email, phone })]);
+      await getUserById(user_id)
+      const resp = await UserRepository.updateModel(user_id, { email, phone })
       if (!resp) return { success: false, data: { msg: "Failed to update user information" } };
       CheckoutEmitter.emit("storeEmailPhone", { user_id, message: `<b>Email and Phone updated successfully</b>` });
       return { success: true, data: { msg: "User information updated successfully" } };
@@ -283,3 +285,47 @@ export const storeUserEmailPhoneTool = createTool({
     }
   },
 });
+
+export const makePaymentTool = createTool({
+  id: "makePaymentTool",
+  description: "This tool is used to make payments",
+  inputSchema: z.object({
+    user_id: z.string().describe("The user ID of the person making the payment"),
+    business_id: z.string().ulid().describe("The business ID of the supermarket"),
+    amount: z.number().describe("The amount to be paid in naira"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    data: z.object({
+      msg: z.string().optional(),
+      data: z.object({}).optional()
+    }),
+  }),
+  execute: async ({ context: { user_id, business_id, amount }}) => {
+    try {
+      await getUserById(user_id);
+      const cart = await CartRepository.readCartByUserAndBusiness(user_id, business_id);
+      if (!cart || cart.products.length === 0) return { success: false, data: { msg: "No items found in your cart" } };
+
+      const total_price: number = cart.products.reduce((sum, product) => {
+        const itemTotal = Number(product.price) * Number(product.quantity);
+        return sum + itemTotal;
+      }, 0);
+
+      console.log("Total Price: ",total_price)
+
+      const { data } = await Paystack.initializePayment(total_price, cart.user.email);
+      
+      return { success: true, data: { msg: "Payment link initialized successfully", data } };
+    } catch (e) {
+      if (e instanceof CustomError) {
+        const { message: msg } = e;
+        return { success: false, data: { msg } };
+      }
+      return {
+        success: false,
+        data: { msg: e instanceof Error ? e.message : String(e) },
+      };
+    }
+  }
+})

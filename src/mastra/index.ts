@@ -6,7 +6,6 @@ import { ContextWithMastra, registerApiRoute } from "@mastra/core/server";
 import {
   businessAddressSchema,
   businessIDSchema,
-  businessSchema,
   businessUpdateSchema,
   createAdminSchema,
   createProductSchema,
@@ -16,6 +15,7 @@ import {
   productUpdateSchema,
   settingsSchema,
   syncSheetSchema,
+  updateBusinessSchema,
   userSchema,
 } from "../validator/schemas";
 import { zValidator } from "@hono/zod-validator";
@@ -29,7 +29,7 @@ import {
   syncSheet,
   updateBusiness,
 } from "../controllers/business.controller";
-// import Checkout from "../utils/checkout-bot";
+import Checkout from "../utils/checkout-bot";
 import env from "../config/env";
 import {
   createProduct,
@@ -40,9 +40,10 @@ import {
 } from "../controllers/product.controller";
 import { getCarts } from "../controllers/cart.controller";
 import "./../Event";
-import GoogleSheetsService, { addProductsToDatabase, getSheetDataAndMutate, run } from "../utils/GoogleSheetsService";
+// import GoogleSheetsService, { addProductsToDatabase, getSheetDataAndMutate, run } from "../utils/GoogleSheetsService";
 import { getSettings, getSettingsByBusinessId, updateSettings } from "../controllers/settings.controller";
 import { userCheckWorkflow } from "./workflows";
+import { handlePaystackPayment } from "../controllers/payment.controller";
 
 export const mastra = new Mastra({
   agents: { checkoutAgent },
@@ -57,6 +58,14 @@ export const mastra = new Mastra({
   server: {
     host: "0.0.0.0",
     apiRoutes: [
+      registerApiRoute("/paystack/webhook", {
+        method: "POST",
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const { event, data } = await c.req.json();
+          await handlePaystackPayment(data, event)
+          return c.json({ msg: "success"}, 200 as any);
+        }) as any,
+      }),
       registerApiRoute("/admin/create", {
         method: "POST",
         middleware: zValidator("json", createAdminSchema) as any,
@@ -86,6 +95,17 @@ export const mastra = new Mastra({
           return c.json(create, create.statusCode as any);
         }) as any,
       }),
+      registerApiRoute("/admin/business/update", {
+        method: "POST",
+        middleware: [validateJWT, zValidator("json", updateBusinessSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const admin = c.get("admin" as any);
+          const { id } = admin;
+          const data = await c.req.json();
+          const update = await updateBusiness({ ...data, admin_id: id });
+          return c.json(update, update.statusCode as any);
+        }) as any,
+      }),
       registerApiRoute("/admin/business/request-sheet", {
         method: "POST",
         middleware: [validateJWT, zValidator("json", businessIDSchema)] as any,
@@ -97,16 +117,16 @@ export const mastra = new Mastra({
           return c.json(create, create.statusCode as any);
         }) as any,
       }),
-      registerApiRoute("/admin/business/update", {
-        method: "POST",
-        middleware: [validateJWT, zValidator("json", businessUpdateSchema)] as any,
-        handler: tryCatch(async (c: ContextWithMastra) => {
-          const { id } = c.get("admin" as any);
-          const data = await c.req.json();
-          const create = await updateBusiness({ ...data, admin_id: id });
-          return c.json(create, create.statusCode as any);
-        }) as any,
-      }),
+      // registerApiRoute("/admin/business/update", {
+      //   method: "POST",
+      //   middleware: [validateJWT, zValidator("json", businessUpdateSchema)] as any,
+      //   handler: tryCatch(async (c: ContextWithMastra) => {
+      //     const { id } = c.get("admin" as any);
+      //     const data = await c.req.json();
+      //     const create = await updateBusiness({ ...data, admin_id: id });
+      //     return c.json(create, create.statusCode as any);
+      //   }) as any,
+      // }),
       registerApiRoute("/user/create", {
         method: "POST",
         middleware: [validateJWT, zValidator("json", userSchema)] as any,
@@ -247,4 +267,4 @@ export const mastra = new Mastra({
   },
 });
 
-// export const checkoutBot = new Checkout(env.TELEGRAM_BOT_TOKEN);
+export const checkoutBot = new Checkout(env.TELEGRAM_BOT_TOKEN);

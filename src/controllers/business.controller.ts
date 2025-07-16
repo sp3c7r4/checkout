@@ -9,6 +9,7 @@ import SettingsRepository from "../repository/SettingsRepository";
 import SpreadSheetRepository from "../repository/SpreadSheetRepository";
 import BusinessResource from "../resource/business";
 import SpreadSheetResource from "../resource/sheet";
+import cloudinary from "../utils/cloudinary";
 import checkoutGoogleSheetsService, { addProductsToDatabase } from "../utils/GoogleSheetsService";
 import { CREATED, OK } from "../utils/Response";
 
@@ -28,29 +29,41 @@ export async function createBusiness(data: any) {
 }
 
 export async function updateBusiness(data: any) {
-  const { business_id, name, email, street, state, country, admin_id } = data;
-  await getAdminById(admin_id);
-  const business = await getBusinessById(business_id);
-  let business_update: any;
-  let address_update: any;
-  if (name || email) {
-    business_update = await BusinessRepository.updateModel(business.id, {
-      name,
-      email,
-    });
-  }
-  if (street || state || country) {
-    address_update = await AddressRepository.updateModel(business.address.id, {
-      street,
-      state,
-      country,
-    });
-  }
-  const res = {
-    ...BusinessResource({ ...business_update, address: address_update }),
-  };
+  const { business_id, admin_id, name, image } = data;
+  await Promise.all([
+    getAdminById(admin_id),
+    getBusinessById(business_id)
+  ])
+  const upload = image && await cloudinary.upload_image(image)
+  const update = await BusinessRepository.updateModel(business_id, { name, image: upload })
+  const res = BusinessResource(update)
   return OK(`Business updated successfully`, res);
 }
+
+// export async function updateBusiness(data: any) {
+//   const { business_id, name, email, street, state, country, admin_id } = data;
+//   await getAdminById(admin_id);
+//   const business = await getBusinessById(business_id);
+//   let business_update: any;
+//   let address_update: any;
+//   if (name || email) {
+//     business_update = await BusinessRepository.updateModel(business.id, {
+//       name,
+//       email,
+//     });
+//   }
+//   if (street || state || country) {
+//     address_update = await AddressRepository.updateModel(business.address.id, {
+//       street,
+//       state,
+//       country,
+//     });
+//   }
+//   const res = {
+//     ...BusinessResource({ ...business_update, address: address_update }),
+//   };
+//   return OK(`Business updated successfully`, res);
+// }
 
 export async function requestSpreadSheet(data: any) {
   const { admin_id, business_id } = data;

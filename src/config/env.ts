@@ -15,7 +15,11 @@ const EnvSchema = z.object({
   TOKEN_PATH: z.string(),
   CHECKOUT_MAIL: z.string(),
   IMAGE_PATH: z.string(),
-  CHECKOUT_MAIL_PASSWORD: z.string()
+  CHECKOUT_MAIL_PASSWORD: z.string(),
+  CLOUDINARY_CLOUD_NAME: z.string(),
+  CLOUDINARY_API_KEY: z.string(),
+  CLOUDINARY_API_SECRET: z.string(),
+  PAYSTACK_SECRET_KEY: z.string()
 })
 
 export type EnvSchema = z.infer<typeof EnvSchema>

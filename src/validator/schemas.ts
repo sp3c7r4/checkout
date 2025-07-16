@@ -67,6 +67,11 @@ export const settingsSchema = z.object({
 export const syncSheetSchema = businessIDSchema.merge(z.object({
   spreadsheet_id: z.string().min(1)
 }))
+
+export const updateBusinessSchema = businessIDSchema.merge(z.object({
+  name: z.string().min(1).optional(),
+  image: z.string().regex(/^data:image\/(png|jpeg|jpg|gif);base64,[A-Za-z0-9+/=]+$/, "Invalid base64 image format").optional()
+}))
 export const productUpdateSchema = createProductSchema.partial()
 export const productDeleteSchema = businessIDSchema.merge(productIDSchema)
 export const businessUpdateSchema = businessIDSchema.merge(businessAddressSchema.partial())

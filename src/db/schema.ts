@@ -22,7 +22,38 @@ export const business = pgTable('business', {
   admin_id: varchar({ length: 26 }).unique().notNull().references(() => admin.id, { onDelete: 'cascade' }),
   name: varchar({ length: 255 }).notNull(),
   email: varchar({ length: 255 }).notNull(),
+  image: varchar({ length: 255 })
 });
+
+export const payment = pgTable('payment', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  reference: varchar({ length: 255 }).unique().notNull(),
+  paystack_transaction_id: varchar({ length: 255 }).unique(),
+  amount: bigint({ mode: 'number' }),
+  currency: varchar({ length: 10 }).$default(() => 'NGN'),
+  status: varchar({ length: 50 }),
+  gateway_response: text(),
+  paid_at: timestamp(),
+  created_at: timestamp().default(sql`now()`),
+  customer_id: varchar({ length: 255 }),
+  authorization: json().$type<{
+    authorization_code: string;
+    card_type: string;
+    last4: string;
+    exp_month: string;
+    exp_year: string;
+    bin: string;
+    bank: string;
+    channel: string;
+    signature: string;
+    reusable: boolean;
+    country_code: string;
+  }>(),
+  channel: varchar({ length: 50 }),
+  metadata: json(),
+  user_id: bigint({mode: 'number'}).notNull().references(() => user.id, { onDelete: 'cascade' }),
+  business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' })
+})
 
 export const address = pgTable('address', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
@@ -49,6 +80,7 @@ export const product = pgTable('product', {
   //New fields
   category: varchar({ length: 255 }).notNull().$default(() => 'general'),
   barcode: varchar({ length: 255 }).notNull().$default(() => ''),
+  brand: varchar({ length: 255 }),
   //End of New Fields
   kg: varchar({ length: 255 }).notNull(),
   quantity: integer().notNull().$default(() => 0),
