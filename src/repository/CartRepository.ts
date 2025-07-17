@@ -42,16 +42,16 @@ class CartRepository extends BaseRepository {
     }
   }
 
-  async storeProductInCart(user_id: string, business_id: string, prods: CartProduct[]) {
+  async storeProductInCart(user_id: string, business_id: string, prods: any[]) {
     try {
       const newProducts = [...prods];
       const existingCart = await this.readCartByUserAndBusiness(user_id, business_id);
       
-      let mergedProducts: CartProduct[];
+      let mergedProducts: any[];
       
       if (existingCart && existingCart.products) {
         // Merge existing products with new ones
-        const existingProducts = existingCart.products as CartProduct[];
+        const existingProducts = existingCart.products as any[];
         mergedProducts = [...existingProducts];
         
         // For each new product, either update existing or add new

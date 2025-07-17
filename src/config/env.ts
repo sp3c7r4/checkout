@@ -16,6 +16,7 @@ const EnvSchema = z.object({
   CHECKOUT_MAIL: z.string(),
   IMAGE_PATH: z.string(),
   CHECKOUT_MAIL_PASSWORD: z.string(),
+  CHECKOUT_MAIL_PASSWORD2: z.string(),
   CLOUDINARY_CLOUD_NAME: z.string(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),

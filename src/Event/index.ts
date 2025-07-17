@@ -3,7 +3,11 @@ import Mailer from "../utils/Mailer";
 const CheckoutEmitter = new EventEmitter();
 
 CheckoutEmitter.on("sendLoginMail", async (data) => {
-  await Mailer.successLoginEmail(data);
+  try {
+    await Mailer.successLoginEmail(data);
+  } catch(e) {
+    console.error("Error sending login email:", e);
+  }
 });
 
 export default CheckoutEmitter;

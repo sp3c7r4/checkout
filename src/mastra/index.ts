@@ -57,6 +57,12 @@ export const mastra = new Mastra({
   }),
   server: {
     host: "0.0.0.0",
+    cors: {
+      origin: "*",
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization","x-mastra-client-type","x-highlight-request","traceparent", "ngrok-skip-browser-warning"],
+      credentials: false,
+    },
     apiRoutes: [
       registerApiRoute("/paystack/webhook", {
         method: "POST",

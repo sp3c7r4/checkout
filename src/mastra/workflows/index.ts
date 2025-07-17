@@ -1,8 +1,43 @@
-import { createStep, createWorkflow } from "@mastra/core";
-import { storeUserEmailPhoneTool } from "../tools";
+import { createStep, createTool, createWorkflow } from "@mastra/core";
 import UserRepository from "../../repository/UserRepository";
 import { getUserById } from "../../helpers/user";
 import { z } from "zod";
+import CustomError from "../../utils/Error";
+import CheckoutEmitter from "../../Event";
+
+const storeUserEmailPhoneTool = createTool({
+  id: "storeUserEmailPhoneTool",
+  description: "This tool is used to store the user's email and phone number",
+  inputSchema: z.object({
+    user_id: z.string().describe("The user ID of the person storing the email and phone number"),
+    email: z.string().email().describe("The email address of the user"),
+    phone: z.string().describe("The phone number of the user with country code"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    data: z.object({
+      msg: z.string().optional(),
+    }),
+  }),
+  execute: async ({ context: { user_id, email, phone } }) => {
+    try {
+      await getUserById(user_id)
+      const resp = await UserRepository.updateModel(user_id, { email, phone })
+      if (!resp) return { success: false, data: { msg: "Failed to update user information" } };
+      CheckoutEmitter.emit("storeEmailPhone", { user_id, message: `<b>Email and Phone updated successfully</b>` });
+      return { success: true, data: { msg: "User information updated successfully" } };
+    } catch (e) {
+      if (e instanceof CustomError) {
+        const { message: msg } = e;
+        return { success: false, data: { msg } };
+      }
+      return {
+        success: false,
+        data: { msg: e instanceof Error ? e.message : String(e) },
+      };
+    }
+  },
+});
 
 const fetchUserEmailPhoneStep = createStep({
   id: "fetchUserEmailPhoneStep",

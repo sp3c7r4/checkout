@@ -9,7 +9,7 @@ import { escapers } from "@telegraf/entity";
 import CheckoutEmitter from '../Event';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply } from 'telegraf/typings/core/types/typegram';
+import { InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply } from '@telegraf/types';
 import ProductRepository from '../repository/ProductRepository';
 import CartRepository from '../repository/CartRepository';
 import { deleteWithIndex } from '../helpers';
@@ -112,7 +112,6 @@ export default class Checkout {
     message = `${message}\n${data ? data?.trim() : ``}`
     
     const imagePath = path.join(__dirname, `../../src/assets/${image}`);
-    reply_markup = reply_markup || {};
     
     await this.bot.telegram.sendPhoto(
       chatId,

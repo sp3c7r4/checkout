@@ -7,6 +7,20 @@ import CustomError from "./Error";
 const tryCatch =
   (controller: (c: ContextWithMastra) => Promise<Response>) =>
   async (c: ContextWithMastra, _next: Next): Promise<Response> => {
+    // c.header('Access-Control-Allow-Origin', '*');
+    // c.header(
+    //   'Access-Control-Allow-Methods',
+    //   'GET, POST, PUT, DELETE, OPTIONS',
+    // );
+    // c.header(
+    //   'Access-Control-Allow-Headers',
+    //   'Content-Type, Authorization, ngrok-skip-browser-warning',
+    // );
+ 
+    // if (c.req.method === 'OPTIONS') {
+    //   return new Response(null, { status: 204 });
+    // }
+
     try {
       return await controller(c);
     } catch (error: any) {

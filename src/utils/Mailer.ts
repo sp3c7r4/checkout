@@ -85,15 +85,26 @@ class Mailer {
   private transporter: nodemailer.Transporter;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({ service: "gmail", auth: { user: env.CHECKOUT_MAIL, pass: env.CHECKOUT_MAIL_PASSWORD, }, });
+    this.transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use STARTTLS
+      auth: {
+        user: env.CHECKOUT_MAIL,
+        pass: env.CHECKOUT_MAIL_PASSWORD
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
   }
 
-  async sendMail(to: string, subject: string, text: string, attachments?: nodemailer.Attachment[]): Promise<void> {
+  async sendMail(to: string, subject: string, text: string, attachments?: any[]): Promise<void> {
     const mailOptions = { from: `Checkout <${env.CHECKOUT_MAIL}>`, to, subject, text, attachments };
     await this.transporter.sendMail(mailOptions);
   }
 
-  async sendMailWithHtml(to: string, subject: string, html: string, attachments?: nodemailer.Attachment[]): Promise<void> {
+  async sendMailWithHtml(to: string, subject: string, html: string, attachments?: any[]): Promise<void> {
     const mailOptions = { from: `Checkout <${env.CHECKOUT_MAIL}>`, to, subject, html, attachments };
     await this.transporter.sendMail(mailOptions);
   }
@@ -119,8 +130,8 @@ class Mailer {
       html: htmlContent,
       attachments: [
         {
-          filename: 'welcome.png',
-          path: env.IMAGE_PATH || './src/assets/welcome.png',
+          filename: 'successlogin.png',
+          path: env.IMAGE_PATH || './src/assets/successlogin.png',
           cid: 'welcomeImage',
         }
       ]
@@ -130,6 +141,4 @@ class Mailer {
 
 export default new Mailer();
 
-console.log(`Mailer initialized with user: ${env.CHECKOUT_MAIL}`); // Debug logging
-// await new Mailer().sendMail('sarafasatar@gmail.com', 'Test Subject', 'Test Email Body');
-// await new Mailer().successLoginEmail('sarafasatar@gmail.com', 'Sara');
+console.log(`Mailer initialized with user: ${env.CHECKOUT_MAIL}`); 
