@@ -399,7 +399,7 @@ export default class Checkout {
   }
 
   private async handleTextMessage(ctx: MyContext) {
-    console.log(JSON.stringify(ctx))
+    // console.log(JSON.stringify(ctx))
     const text = ctx?.text;
     const username = ctx.from?.username || 'unknown';
     const firstName = ctx.from?.first_name || 'unknown';

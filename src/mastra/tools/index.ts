@@ -179,14 +179,14 @@ export const placeOrderForCartItemsTool = createTool({
 
       const metadata = { order_id };
       const { data } = await Paystack.initializePayment(total_price * 100, email, metadata);
-
+      console.log("Paystack Data: ", data)
       const reply_markup = {
         inline_keyboard: [[{
           text: "Click to make payment",
           web_app: { url: data?.authorization_url }
         }]]
       }
-      CheckoutEmitter.emit("paymentEvent", { user_id, message: `<b>Payment link initialized successfully</b>`, reply_markup });
+      CheckoutEmitter.emit("paymentEvent", { user_id, message: ``, reply_markup });
       return { success: true, data: { msg: "Payment link initialized successfully", data } };
     } catch (e) {
       if (e instanceof CustomError) {

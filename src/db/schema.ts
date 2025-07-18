@@ -17,6 +17,8 @@ export const admin = pgTable('admin', {
   last_name: varchar({ length: 255 }).notNull(),
   email: varchar({ length: 255 }).unique().notNull(),
   password: varchar({ length: 255 }).notNull(),
+  // created_at: timestamp("created_at") .notNull() .default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
 export const business = pgTable('business', {
@@ -24,7 +26,9 @@ export const business = pgTable('business', {
   admin_id: varchar({ length: 26 }).unique().notNull().references(() => admin.id, { onDelete: 'cascade' }),
   name: varchar({ length: 255 }).notNull(),
   email: varchar({ length: 255 }).notNull(),
-  image: varchar({ length: 255 })
+  image: varchar({ length: 255 }),
+  // created_at: timestamp("created_at") .notNull() .default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
 export const payment = pgTable('payment', {
@@ -64,6 +68,8 @@ export const order = pgTable('order', {
   total_price: integer().notNull().$default(() => 0),
   business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
   user_id: bigint({mode: 'number'}).notNull().references(() => user.id, { onDelete: 'cascade' }),
+  created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 })
 
 export const address = pgTable('address', {
@@ -107,6 +113,8 @@ export const user = pgTable('user', {
   email: varchar('email', { length: 255 }).unique(),
   phone: varchar('phone', { length: 255 }),
   current_business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
+  created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 })
 
 export const cart = pgTable('cart', {
@@ -116,6 +124,8 @@ export const cart = pgTable('cart', {
   business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
   total_price: integer().notNull().$default(() => 0),
   total_kg: integer().notNull().$default(() => 0),
+  // created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`).$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 })
 
 export const spreadsheet = pgTable('spreadsheet', {
@@ -124,6 +134,8 @@ export const spreadsheet = pgTable('spreadsheet', {
   spreadsheet_id: varchar({ length: 255 }).notNull(),
   url: varchar({ length: 255 }).notNull(),
   business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
+  // created_at: timestamp("created_at") .notNull() .default(sql`CURRENT_TIMESTAMP`),
+  // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
 export const checkoutStates = pgTable('checkout_states', {
@@ -159,6 +171,27 @@ export const userBusinessRelations = relations(userBusiness, ({ one, many }) => 
   })
 }))
 
+export const orderRelations = relations(order, ({ one }) => ({
+  user: one(user, {
+    fields: [order.user_id],
+    references: [user.id]
+  }),
+  business: one(business, {
+    fields: [order.business_id],
+    references: [business.id]
+  })
+}))
+
+export const paymentRelations = relations(payment, ({ one }) => ({
+  user: one(user, {
+    fields: [payment.user_id],
+    references: [user.id]
+  }),
+  business: one(business, {
+    fields: [payment.business_id],
+    references: [business.id]
+  })
+}))
 
 export const adminRelations = relations(admin, ({ one }) => ({
   business: one(business, {
@@ -167,9 +200,14 @@ export const adminRelations = relations(admin, ({ one }) => ({
   })
 }))
 
+// export const orderRelations = relations(order, ({ many }) => {
+//   user: 
+// })
+
 export const userRelations = relations(user, ({ many }) => ({
   businesses: many(userBusiness),
-  carts: many(cart)
+  carts: many(cart),
+  orders: many(order)
 }))
 
 
@@ -190,6 +228,7 @@ export const businessRelations = relations(business, ({ one, many }) => ({
     fields: [business.id],
     references: [settings.business_id]
   }),
+  orders: many(order),
   products: many(product),
   users: many(userBusiness),
   carts: many(cart)

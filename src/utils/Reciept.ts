@@ -40,7 +40,7 @@ async function generateReceiptTemplate(data) {
 
       body {
         margin: 0;
-        padding: 2rem;
+        padding: 1rem;
         font-family: 'Inter', sans-serif;
         background: linear-gradient(135deg, #f0ae00 0%, #e27400 100%);
         display: flex;
@@ -51,20 +51,16 @@ async function generateReceiptTemplate(data) {
 
       .receipt-container {
         width: 100%;
-        max-width: 420px;
+        max-width: 380px;
         background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-        border-radius: 24px;
+        border-radius: 20px;
         box-shadow: 
-          0 25px 50px -12px rgba(0, 0, 0, 0.25),
+          0 20px 40px -12px rgba(0, 0, 0, 0.25),
           0 0 0 1px rgba(255, 255, 255, 0.05);
-        padding: 2.5rem;
+        padding: 1.5rem;
         box-sizing: border-box;
         position: relative;
         overflow: hidden;
-      }
-
-      #logo2 {
-        border-radius: 10px;
       }
 
       .receipt-container::before {
@@ -73,165 +69,144 @@ async function generateReceiptTemplate(data) {
         top: 0;
         left: 0;
         right: 0;
-        height: 4px;
+        height: 3px;
         background: linear-gradient(90deg, #f0ae00, #e27400);
       }
       
       .header {
         text-align: center;
-        margin-bottom: 2rem;
-        padding-bottom: 1.5rem;
-        border-bottom: 2px dashed #e5e7eb;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px dashed #e5e7eb;
       }
 
       .logo-section {
         display: flex;
-        justify-content: space-between; /* Justify space between logos */
+        justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
         padding: 0 0.5rem;
       }
 
-      .left-logo-wrapper, .right-logo-wrapper { /* Specific wrappers for left and right */
+      .left-logo-wrapper, .right-logo-wrapper {
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 16px; /* Border radius for both */
-        /* background: #f8fafc; */
-        /* padding: 10px; */
-        transition: transform 0.2s ease;
+        border-radius: 12px;
       }
 
       .left-logo-wrapper {
-        /* border: 1px solid #e5e7eb; Optional border for left logo */
-        min-width: 80px;
-        max-width: 150px;
+        min-width: 60px;
+        max-width: 120px;
       }
 
       .right-logo-wrapper {
-        min-width: 80px; /* Keep min-width for right logo as well */
-        max-width: 120px; /* Keep max-width for right logo as well */
+        min-width: 60px;
+        max-width: 100px;
       }
 
       .left-logo-wrapper img {
         width: auto;
-        height: 40px;
+        height: 32px;
         max-width: 100%;
-        max-height: 80px; /* Normal height for left logo */
         object-fit: contain;
       }
 
       .right-logo-wrapper img {
         width: auto;
-        height: 50px;
+        height: 40px;
         max-width: 100%;
-        max-height: 160px; /* 2x height for right logo (80px * 2) */
         object-fit: contain;
-      }
-
-      .left-logo-wrapper:hover, .right-logo-wrapper:hover {
-        transform: translateY(-2px);
-      }
-
-      /* Removed partnership-indicator styles as it's no longer present in HTML */
-
-      .center-content {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        margin-top: 1rem;
+        border-radius: 8px;
       }
 
       .business-name {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
         font-weight: 700;
         color: #1f2937;
-        /* margin-bottom: 0.25rem; */
+        margin: 0.5rem 0 0.25rem 0;
       }
 
       .receipt-subtitle {
-        font-size: 0.875rem;
+        font-size: 0.8rem;
         color: #6b7280;
         font-weight: 500;
-        margin-top: 0.25rem;
+        margin: 0;
       }
       
       .status-badge {
         display: inline-block;
-        padding: 0.5rem 1rem;
-        border-radius: 50px;
-        font-size: 0.875rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        margin: 1rem 0;
+        margin: 0.75rem 0;
         color: white;
       }
       
       .amount-section {
         text-align: center;
-        margin-bottom: 2rem;
-        padding: 1.5rem;
+        margin-bottom: 1rem;
+        padding: 0.75rem;
         background: linear-gradient(145deg, #f8fafc, #e2e8f0);
-        border-radius: 16px;
-        border: 1px solid #e5e7eb;
-      }
-
-      .amount {
-        font-size: 3rem;
-        font-weight: 800;
-        color: #111827;
-        line-height: 1.2;
-        margin-bottom: 0.5rem;
-      }
-
-      .amount-label {
-        font-size: 0.875rem;
-        color: #6b7280;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-
-      .transaction-info {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin-bottom: 2rem;
-        font-size: 0.875rem;
-      }
-      
-      .info-item {
-        padding: 1rem;
-        background: #f8fafc;
         border-radius: 12px;
         border: 1px solid #e5e7eb;
       }
 
-      .info-label {
+      .amount {
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.2;
+        margin: 0;
+      }
+
+      .amount-label {
+        font-size: 0.7rem;
         color: #6b7280;
         font-weight: 500;
-        margin-bottom: 0.25rem;
         text-transform: uppercase;
-        font-size: 0.75rem;
+        letter-spacing: 1px;
+        margin-top: 0.2rem;
+      }
+
+      .transaction-info {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        font-size: 0.7rem;
+        color: #6b7280;
+        text-align: center;
+      }
+      
+      .info-item {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+      }
+
+      .info-label {
+        font-weight: 500;
+        text-transform: uppercase;
         letter-spacing: 0.5px;
+        margin-bottom: 0.1rem;
       }
 
       .info-value {
         color: #1f2937;
         font-weight: 600;
-        font-size: 0.875rem;
+        font-size: 0.75rem;
       }
       
       .section-title {
-        font-size: 1.125rem;
+        font-size: 1rem;
         font-weight: 700;
         color: #1f2937;
-        margin-bottom: 1rem;
-        padding-top: 1.5rem;
-        border-top: 2px dashed #e5e7eb;
+        margin: 1rem 0 0.5rem 0;
+        padding-top: 0.75rem;
+        border-top: 1px dashed #e5e7eb;
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -239,24 +214,19 @@ async function generateReceiptTemplate(data) {
 
       .section-title::before {
         content: '🛒';
-        font-size: 1.25rem;
+        font-size: 1rem;
       }
 
       .items-section .item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
+        padding: 0.5rem 0.6rem;
+        margin-bottom: 0.3rem;
         background: #f8fafc;
-        border-radius: 12px;
+        border-radius: 8px;
         border: 1px solid #e5e7eb;
-        transition: all 0.2s ease;
-      }
-      
-      .items-section .item:hover {
-        background: #f1f5f9;
-        transform: translateY(-1px);
+        font-size: 0.85rem;
       }
       
       .item-info {
@@ -268,12 +238,13 @@ async function generateReceiptTemplate(data) {
       .item-name {
         font-weight: 600;
         color: #1f2937;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.1rem;
         text-transform: capitalize;
+        font-size: 0.85rem;
       }
       
       .item-details {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: #6b7280;
         font-weight: 500;
       }
@@ -281,14 +252,14 @@ async function generateReceiptTemplate(data) {
       .item-price {
         font-weight: 700;
         color: #1f2937;
-        font-size: 1rem;
+        font-size: 0.9rem;
       }
       
       .total-section {
-        margin-top: 2rem;
-        padding: 1.5rem;
+        margin-top: 1rem;
+        padding: 0.75rem;
         background: linear-gradient(145deg, #1f2937, #374151);
-        border-radius: 16px;
+        border-radius: 12px;
         color: white;
       }
       
@@ -296,30 +267,30 @@ async function generateReceiptTemplate(data) {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 1.25rem;
+        font-size: 1rem;
         font-weight: 700;
       }
       
       .qr-section {
         text-align: center;
-        margin-top: 2rem;
-        padding: 1.5rem;
+        margin-top: 1rem;
+        padding: 0.75rem;
         background: #f8fafc;
-        border-radius: 16px;
+        border-radius: 12px;
         border: 1px solid #e5e7eb;
       }
       
       .transaction-ids {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
+        gap: 0.3rem;
+        margin-bottom: 0.5rem;
       }
 
       .id-row {
         display: flex;
         justify-content: space-between;
-        font-size: 0.75rem;
+        font-size: 0.65rem;
         color: #6b7280;
       }
 
@@ -336,19 +307,19 @@ async function generateReceiptTemplate(data) {
       }
       
       .qr-code img {
-        width: 120px;
-        height: 120px;
-        border-radius: 12px;
-        border: 3px solid white;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        width: 80px;
+        height: 80px;
+        border-radius: 8px;
+        border: 2px solid white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
 
       .footer {
         text-align: center;
-        margin-top: 2rem;
-        padding-top: 1.5rem;
-        border-top: 2px dashed #e5e7eb;
-        font-size: 0.875rem;
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px dashed #e5e7eb;
+        font-size: 0.75rem;
         color: #6b7280;
       }
       
@@ -358,8 +329,8 @@ async function generateReceiptTemplate(data) {
       }
 
       .powered-by {
-        margin-top: 1rem;
-        font-size: 0.75rem;
+        margin-top: 0.5rem;
+        font-size: 0.65rem;
         color: #9ca3af;
       }
 
@@ -375,28 +346,35 @@ async function generateReceiptTemplate(data) {
         }
       }
 
-      /* Responsive adjustments for smaller screens */
       @media (max-width: 480px) {
+        .receipt-container {
+          padding: 1.25rem;
+          max-width: 350px;
+        }
+        
         .logo-section {
           padding: 0 0.25rem;
         }
         
         .left-logo-wrapper, .right-logo-wrapper {
-          min-width: 60px;
-          max-width: 90px;
-          padding: 8px;
+          min-width: 50px;
+          max-width: 80px;
         }
         
         .left-logo-wrapper img {
-          max-height: 60px; /* Adjusted for smaller screens */
+          height: 28px;
         }
         
         .right-logo-wrapper img {
-          max-height: 120px; /* 2x of 60px for smaller screens */
+          height: 35px;
         }
         
         .business-name {
-          font-size: 1.25rem;
+          font-size: 1.1rem;
+        }
+
+        .amount {
+          font-size: 1.5rem;
         }
       }
     </style>
@@ -408,15 +386,12 @@ async function generateReceiptTemplate(data) {
           <div class="left-logo-wrapper">
             <img id="logo1" src="https://res.cloudinary.com/dxypfbvwt/image/upload/v1752671926/dark_a1by8v.png" alt="Left Logo">
           </div>
-          <!-- Removed the partnership-indicator div -->
           <div class="right-logo-wrapper">
             <img id="logo2" src="https://res.cloudinary.com/dxypfbvwt/image/upload/v1752591894/10d9eb6f-a9d0-4957-90f6-edfcf9379977.png" alt="Business Logo">
           </div>
         </div>
-        <div class="center-content">
-          <div class="business-name">{{business_name}}</div>
-          <div class="receipt-subtitle">Transaction Receipt</div>
-        </div>
+        <div class="business-name">{{business_name}}</div>
+        <div class="receipt-subtitle">Transaction Receipt</div>
         <div class="status-badge" style="background-color: {{statusColor}};">{{statusText}}</div>
       </div>
       
@@ -483,12 +458,11 @@ async function generateReceiptTemplate(data) {
       <div class="footer">
         Need assistance? Contact us at <span class="footer-highlight">official.checkout.ai@gmail.com</span><br>
         Thank you for your business!
-        <div class="powered-by">Powered by Advanced Receipt System</div>
+        <div class="powered-by">Powered by <b>Checkout.ai</b></div>
       </div>
     </div>
-  
-  
-  </body></html>
+  </body>
+</html>
   `;
 
   // Prepare template data

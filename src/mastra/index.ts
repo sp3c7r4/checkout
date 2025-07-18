@@ -43,7 +43,8 @@ import "./../Event";
 // import GoogleSheetsService, { addProductsToDatabase, getSheetDataAndMutate, run } from "../utils/GoogleSheetsService";
 import { getSettings, getSettingsByBusinessId, updateSettings } from "../controllers/settings.controller";
 import { userCheckWorkflow } from "./workflows";
-import { handlePaystackPayment } from "../controllers/payment.controller";
+import { getUserPayments, handlePaystackPayment } from "../controllers/payment.controller";
+import { getUserOrders } from "../controllers/order.controller";
 
 export const mastra = new Mastra({
   agents: { checkoutAgent },
@@ -252,6 +253,28 @@ export const mastra = new Mastra({
           const { id } = c.get("admin" as any);
           const { business_id } = await c.req.param();
           const products = await getCarts(id, business_id);
+          return c.json(products, products.statusCode || 200 as any);
+          // return c.json({ message: "Done", token });
+        }) as any,
+      }),
+      registerApiRoute("/admin/orders/:business_id", {
+        method: "GET",
+        middleware: [validateJWT, zValidator("param", businessIDSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const { id } = c.get("admin" as any);
+          const { business_id } = await c.req.param();
+          const products = await getUserOrders(id, business_id);
+          return c.json(products, products.statusCode || 200 as any);
+          // return c.json({ message: "Done", token });
+        }) as any,
+      }),
+      registerApiRoute("/admin/payments/:business_id", {
+        method: "GET",
+        middleware: [validateJWT, zValidator("param", businessIDSchema)] as any,
+        handler: tryCatch(async (c: ContextWithMastra) => {
+          const { id } = c.get("admin" as any);
+          const { business_id } = await c.req.param();
+          const products = await getUserPayments(id, business_id);
           return c.json(products, products.statusCode || 200 as any);
           // return c.json({ message: "Done", token });
         }) as any,

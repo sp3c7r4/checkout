@@ -110,6 +110,10 @@ class UserBusinessRepository extends BaseRepository {
         );
       }
 
+      await UserRepository.updateModel(user_id as any, {
+        current_business_id: business_id,
+      });
+
       const check_cart = await CartRepository.readCartByUserAndBusiness(
         user_id as any,
         business_id
