@@ -9,7 +9,7 @@ import SettingsRepository from "../repository/SettingsRepository";
 import SpreadSheetRepository from "../repository/SpreadSheetRepository";
 import BusinessResource from "../resource/business";
 import SpreadSheetResource from "../resource/sheet";
-import cloudinary from "../utils/cloudinary";
+import cloudinary from "../utils/Cloudinary";
 import checkoutGoogleSheetsService, { addProductsToDatabase } from "../utils/GoogleSheetsService";
 import { CREATED, OK } from "../utils/Response";
 

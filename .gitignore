@@ -11,3 +11,7 @@ token.json
 credentials.json
 *.log
 # src
+test.html
+test_receipt_html.html
+test_receipt_image.png
+test_receipt_pdf.pdf

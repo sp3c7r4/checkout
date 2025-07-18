@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { pgTable, varchar, json, integer, bigint, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, varchar, json, integer, bigint, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { ulid } from 'ulid';
 import { CartProduct } from "../types/product";
 
@@ -8,6 +8,8 @@ interface Settings {
     description: string;
     state: boolean;
   }
+
+export const orderStatusEnum = pgEnum('order_status', ['pending', 'approved', 'canceled']);
 
 export const admin = pgTable('admin', {
   id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
@@ -53,6 +55,15 @@ export const payment = pgTable('payment', {
   metadata: json(),
   user_id: bigint({mode: 'number'}).notNull().references(() => user.id, { onDelete: 'cascade' }),
   business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' })
+})
+
+export const order = pgTable('order', {
+  id: varchar("id", { length: 26 }).primaryKey().notNull().$defaultFn(() => ulid()),
+  products: json().$type<CartProduct[]>(),
+  status: orderStatusEnum('status').notNull().$default(() => 'pending'),
+  total_price: integer().notNull().$default(() => 0),
+  business_id: varchar({ length: 26 }).notNull().references(() => business.id, { onDelete: 'cascade' }),
+  user_id: bigint({mode: 'number'}).notNull().references(() => user.id, { onDelete: 'cascade' }),
 })
 
 export const address = pgTable('address', {

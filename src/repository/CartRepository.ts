@@ -244,6 +244,51 @@ class CartRepository extends BaseRepository {
       throw new CE_INTERNAL_SERVER(e.message);
     }
   }
+
+  async updateProductInCart(user_id: string, business_id: string, product_id: string, new_quantity: number): Promise<boolean> {
+    try {
+      const existingCart = await this.readCartByUserAndBusiness(user_id, business_id);
+      if (!existingCart?.products) return false;
+
+      const products = existingCart.products as CartProduct[];
+      const productExists = products.some(p => p.id === product_id);
+      
+      if (!productExists) return false;
+
+      // Filter out the product if quantity <= 0, otherwise update it
+      const updatedProducts = new_quantity <= 0 
+        ? products.filter(p => p.id !== product_id)
+        : products.map(p => p.id === product_id ? { ...p, quantity: new_quantity } : p);
+
+      // Recalculate totals
+      const total_price = updatedProducts.reduce((sum, p) => 
+        sum + (Number(p.price) * Number(p.quantity)), 0);
+      
+      const total_kg = updatedProducts.reduce((sum, p) => 
+        sum + (Number(p.kg || 0) * Number(p.quantity)), 0);
+
+      const result = await db.update(this.model)
+        .set({ products: updatedProducts, total_price, total_kg })
+        .where(eq(this.model.id, existingCart.id))
+        .returning();
+
+      return result.length > 0;
+    } catch (err) {
+      console.error('Error updating product in cart:', err);
+      return false;
+    }
+  }
+
+  async getCartItem(user_id: string, business_id: string, product_id: string): Promise<CartProduct | null> {
+    try {
+        const cart = await this.readCartByUserAndBusiness(user_id, business_id);
+        const products = cart?.products as CartProduct[] || [];
+        return products.find(p => p.id === product_id) || null;
+      } catch (err) {
+        console.error('Error getting cart item:', err);
+        return null;
+      }
+  }
 }
 
 export default new CartRepository();

@@ -1,17 +1,22 @@
 import { db } from "../db";
 import { payment } from "../db/schema";
+import CheckoutEmitter from "../Event";
+import { getBusinessById } from "../helpers/business";
+import OrderRepository from "../repository/OrderRepository";
+import PaymentRepository from "../repository/PaymentRepository";
+import { generateReceipt } from "../utils/Reciept";
+import { storeIdSchema } from "../validator/schemas";
 
 export async function handlePaystackPayment(data: any, event: string) {
   // Destructure only the fields that match your payment schema
   const { id: paystack_transaction_id, reference, amount, currency, status, gateway_response, paid_at, channel, metadata, authorization, customer } = data;
-
+  const { order_id } = metadata
+  if (!order_id) return; 
+  const order = await OrderRepository.updateModel(order_id, { status: 'approved' });
   // Extract user_id from metadata and customer_id from customer object
-  const user_id = metadata?.user_id;
-  const business_id = metadata?.business_id; // Add this to your metadata when creating the transaction
+  const user_id = order?.user_id;
+  const business_id = order?.business_id;
   const customer_id = customer?.customer_code;
-
-  // You'll also need to determine the business_id based on your application logic
-  // This might come from metadata or you might need to look it up
 
   const paymentData = {
     reference,
@@ -41,8 +46,26 @@ export async function handlePaystackPayment(data: any, event: string) {
     business_id
   };
 
-  await db.insert(payment).values(paymentData); // Assuming you have a db instance to interact with your database
+  const { name: business_name } = await getBusinessById(business_id);
 
-  // Now you can save paymentData to your database
-  // Example: await db.insert(payment).values(paymentData);
+  const payment = await PaymentRepository.create(paymentData);
+  const sampleReceiptData = {
+    currency: currency || "₦",
+    amount: (amount / 100).toString(), // Convert from kobo to naira
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+    status: status === 'success' ? 'success' : 'pending',
+    business_name: business_name || 'Business Name',
+    transaction_id: order.id,
+    payment_id: payment.id,
+    items: order.products || []
+  };
+
+  // await db.insert(payment).values(paymentData);
+  CheckoutEmitter.emit("sendReceipt", { 
+    user_id,
+    message: `Payment Successful for Order ID: ${order_id}`,
+    data: '',
+    imageBuffer: await generateReceipt(sampleReceiptData, 'image')
+  });
 }

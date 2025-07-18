@@ -4,7 +4,7 @@ import { getUserById } from '../helpers/user';
 import UserBusinessRepository from '../repository/UserBusinessRepository';
 import { getBusinessById } from '../helpers/business';
 import CustomError from './Error';
-import { MarkDownizeProducts, MutateCartProduct } from '../helpers/bot';
+import { MarkDownizeProducts, MutateCartProduct, MutateProduct } from '../helpers/bot';
 import { escapers } from "@telegraf/entity";
 import CheckoutEmitter from '../Event';
 import path from 'path';
@@ -21,7 +21,7 @@ interface CheckoutSession {
     price: number;
   };
   quantity?: string;
-  step?: 'idle' | 'entering_quantity' | 'confirming_order';
+  step?: 'idle' | 'entering_quantity' | 'editing_quantity' | 'confirming_order';
   quantityMessageId?: number; // Add this line
 }
 
@@ -120,11 +120,31 @@ export default class Checkout {
     );
   }
 
+  async sendMessageImageLink(chatId: number | string, message: string, data: any, link: string, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined = undefined) {
+    message = `${message}\n${data ? data?.trim() : ``}`
+    
+    await this.bot.telegram.sendPhoto(
+      chatId,
+      { url: link },
+      { caption: message, parse_mode: 'HTML', reply_markup }
+    );
+  }
+
+  async sendMessageDocument(chatId: number | string, message: string, data: any, document: Buffer, reply_markup?: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined) {
+    message = `${message}\n${data ? data?.trim() : ``}`
+    
+    await this.bot.telegram.sendDocument(
+      chatId,
+      { source: document, filename: `${chatId}.png` },
+      { caption: message, parse_mode: 'HTML', reply_markup }
+    );
+  }
+
   private setupListeners() {
-    CheckoutEmitter.on('sendStoreProducts', ({ user_id, message, data }) => {
+    CheckoutEmitter.on('sendStoreProducts', ({ user_id, message, data, reply_markup }) => {
       console.log("Listed product event - CALLED !!!")
       this.BotSendMessageState = false
-      this.sendMessageImage(user_id, message, data, 'products.png');
+      this.sendMessageImage(user_id, message, data, 'products.png', reply_markup);
     });
 
     CheckoutEmitter.on('foundProduct', ({ user_id, message, data, reply_markup }:{user_id: string, message: string, data: any, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined }) => {
@@ -143,11 +163,29 @@ export default class Checkout {
       console.log("Removed Cart item event - CALLED !!!")
       this.sendMessageImage(user_id, message, data, 'removed.png', reply_markup);
     })
+    
+    CheckoutEmitter.on('paymentEvent', ({user_id, message, data, reply_markup}) => {
+      console.log("Payment event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, data, 'payment.png', reply_markup);
+    })
 
     CheckoutEmitter.on('storeEmailPhone', ({ user_id, message, data }) => {
       console.log("Store email and phone event - CALLED !!!")
       this.BotSendMessageState = false
       this.sendMessageImage(user_id, message, data, 'available.png');
+    });
+
+    CheckoutEmitter.on('sendReceipt', ({ user_id, message, data, imageBuffer }) => {
+      console.log("Send receipt event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageDocument(user_id, message, data, imageBuffer);
+    });
+
+    CheckoutEmitter.on('viewProduct', ({ user_id, message, data, image_link, reply_markup }) => {
+      console.log("View product event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImageLink(user_id, message, data, image_link, reply_markup);
     });
   }
 
@@ -255,8 +293,71 @@ export default class Checkout {
       CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
       this.BotSendMessageState = false;
       return await ctx.answerCbQuery(`You selected ${product.name}`);
-      } 
-      if (ctx.session.step === 'entering_quantity') {
+      }
+      if (data.startsWith('editProductId_')) {
+        const productId = data.replace('editProductId_', '');
+        const product = await ProductRepository.readOneById(productId);
+        
+        if (!product) {
+          return await ctx.answerCbQuery('Product not found');
+        }
+
+        // Get current cart item to show existing quantity
+        const userId = String(ctx.from.id);
+        const { current_business_id } = await getUserById(userId);
+        const cartItem = await CartRepository.getCartItem(userId, current_business_id, productId);
+        
+        // Store in session with edit mode flag
+        ctx.session.currentProduct = {
+          id: productId,
+          name: product.name,
+          price: product.price
+        };
+        ctx.session.step = 'editing_quantity'; // Different step to distinguish from adding
+        ctx.session.quantity = cartItem?.quantity?.toString() || '1'; // Pre-populate with existing quantity
+        
+        await ctx.answerCbQuery('Edit quantity');
+        const message = await ctx.reply(
+          `Edit quantity for ${product.name} (₦${product.price} each)\nCurrent quantity: ${cartItem?.quantity || 1}`,
+          {
+            reply_markup: this.createInlineNumberKeyboard()
+          }
+        );
+
+        ctx.session.quantityMessageId = message.message_id;
+        this.BotSendMessageState = false;
+        return;
+      }
+      if (data.startsWith('view_product:')) {
+        const productId = data.replace('view_product:', '');
+        const product = await ProductRepository.readOneById(productId);
+        if (!product) return await ctx.answerCbQuery('Product not found');
+        ctx.session.currentProduct = {
+          id: productId,
+          name: product.name,
+          price: product.price
+        };
+
+      //   const reply_markup = {
+      //   inline_keyboard: [
+      //     [
+      //       { text: "Edit Product", callback_data: `editProductId_${productId}` },
+      //       { text: "Remove Product", callback_data: `removeProductId_${productId}` },
+      //     ],
+      //     [
+      //       { text: "Cancel", callback_data: `cart_operation_cancel` },
+      //     ],
+      //   ],
+      // };
+
+      const mutated_resp = MutateProduct(product);
+      const reply_markup = { inline_keyboard: [ [ { text: "Add to Cart", callback_data: `addToCart_${product.id}` }, ], ], };
+      
+      CheckoutEmitter.emit("viewProduct", { data: mutated_resp, user_id: ctx?.from?.id, message: `<b>Yes ${product.name} is available 😊</b>\n`, reply_markup, image_link: product.image });
+      this.BotSendMessageState = false;
+      return await ctx.answerCbQuery(`You selected ${product.name}`);
+      }
+      if (ctx.session.step === 'entering_quantity' || ctx.session.step === 'editing_quantity') {
         return await this.handleNumberKeyboard(ctx, data);
       }
       await ctx.answerCbQuery('Unknown option');
@@ -304,6 +405,7 @@ export default class Checkout {
     const firstName = ctx.from?.first_name || 'unknown';
     const userId = ctx.from?.id.toString() || 'unknown';
     const { current_business_id } = await getUserById(userId);
+    if(!current_business_id) return await ctx.reply('You are not associated with any business. Please contact your admin to get started.');
 
     if (!text || text.trim().length === 0) {
       await ctx.reply('Please send a valid message.');
@@ -420,23 +522,30 @@ export default class Checkout {
         break;
 
       case '✅':
-        // Confirm and add to cart
+        // Confirm and add/update cart
         const quantity = parseInt(ctx.session.quantity || '0');
         if (quantity > 0) {
-          await ctx.answerCbQuery('Adding to cart...');
-          await this.addToCart(ctx, ctx.session.currentProduct, quantity);
+          await ctx.answerCbQuery(ctx.session.step === 'editing_quantity' ? 'Updating cart...' : 'Adding to cart...');
+          
+          if (ctx.session.step === 'editing_quantity') {
+            await this.updateCartItem(ctx, ctx.session.currentProduct, quantity);
+          } else {
+            await this.addToCart(ctx, ctx.session.currentProduct, quantity);
+          }
         } else {
           await ctx.answerCbQuery('Please enter a valid quantity');
         }
         break;
+
       case 'cancel':
         // Cancel the operation
         ctx.session.step = 'idle';
         ctx.session.currentProduct = undefined;
         ctx.session.quantity = '';
         ctx.session.quantityMessageId = undefined;
-        await ctx.answerCbQuery('Cart operation canceled 😊⚡');
-        await ctx.reply('Cart operation canceled. 😊⚡');
+        await ctx.answerCbQuery('Operation canceled 😊⚡');
+        await ctx.reply('Operation canceled. 😊⚡');
+        this.BotSendMessageState = true;
         break;
 
       default:
@@ -455,7 +564,6 @@ export default class Checkout {
           await ctx.answerCbQuery('Invalid input');
         }
     }
-    // this.BotSendMessageState = true;
   } catch (error) {
     console.error('Error handling number keyboard:', error);
     await ctx.answerCbQuery('Error processing input');
@@ -468,7 +576,10 @@ export default class Checkout {
     const quantity = ctx.session.quantity || '0';
     const total = parseInt(quantity) * ctx.session.currentProduct.price;
     
-    const updatedText = `How many ${ctx.session.currentProduct.name} would you like to add? (₦${ctx.session.currentProduct.price} each)\n\nQuantity: ${quantity}\nTotal: ₦${total}`;
+    const isEditing = ctx.session.step === 'editing_quantity';
+    const actionText = isEditing ? 'Edit' : 'add';
+    
+    const updatedText = `How many ${ctx.session.currentProduct.name} would you like to ${actionText}? (₦${ctx.session.currentProduct.price} each)\n\nQuantity: ${quantity}\nTotal: ₦${total}`;
     
     try {
       await ctx.telegram.editMessageText(
@@ -482,6 +593,53 @@ export default class Checkout {
       );
     } catch (error) {
       console.error('Error updating quantity message:', error);
+    }
+  }
+
+  private async updateCartItem(ctx: MyContext, product: any, quantity: number) {
+    try {
+      const userId = ctx.from?.id.toString() as any;
+      const { current_business_id } = await getUserById(userId);
+
+      // Update the cart item
+      const updatedProduct = { ...product, quantity };
+      const updateResult = await CartRepository.updateProductInCart(userId, current_business_id, product.id, quantity);
+
+      if (updateResult) {
+        const finalText = `✅ Updated ${product.name} quantity to ${quantity}\nTotal: ₦${quantity * product.price}`;
+        
+        try {
+          await ctx.telegram.editMessageText(
+            ctx.chat?.id,
+            ctx.session.quantityMessageId,
+            undefined,
+            finalText
+          );
+        } catch (editError) {
+          // If editing fails, send a new message
+          await ctx.reply(finalText);
+        }
+      } else {
+        await ctx.reply('❌ Failed to update cart. Please try again.');
+      }
+
+      // Reset session
+      ctx.session.step = 'idle';
+      ctx.session.currentProduct = undefined;
+      ctx.session.quantity = '';
+      ctx.session.quantityMessageId = undefined;
+      this.BotSendMessageState = true;
+
+    } catch (error) {
+      console.error('Error updating cart:', error);
+      await ctx.reply('❌ Error updating cart');
+      
+      // Reset session on error
+      ctx.session.step = 'idle';
+      ctx.session.currentProduct = undefined;
+      ctx.session.quantity = '';
+      ctx.session.quantityMessageId = undefined;
+      this.BotSendMessageState = true;
     }
   }
 
