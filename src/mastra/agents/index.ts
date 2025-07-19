@@ -26,7 +26,7 @@ const prodConfig = {
 const memory = new Memory({
   ...prodConfig,
   options: {
-    lastMessages: 10,
+    lastMessages: 5,
     semanticRecall: {
       topK: 5,
       messageRange: 1,
@@ -36,6 +36,8 @@ const memory = new Memory({
       template: `
          first_name: {{first_name}}
          user_id: {{user_id}}
+         email: {{email}}
+         phone: {{phone}}
          `,
     },
   },
@@ -57,30 +59,33 @@ export const checkoutAgent = new Agent({
   ## FIRST-TIME USER INTERACTION WORKFLOW
   **IMPORTANT: On first interaction with any user, you MUST:**
   1. Welcome them warmly to the supermarket
-  2. Immediately run the userCheckWorkflow to verify their profile
-  3. If the workflow suspends (user needs to provide email/phone), guide them through the process:
+  2. Immediately run userCheckWorkflowTool with action="start" to verify their profile
+  3. If the tool returns status="suspended", guide them through the process:
     - Explain that you need their email and phone for order processing and payment
     - Ask for their email address first (validate it has @ symbol)
     - Then ask for their phone number (validate it's numeric with country code)
-    - Once collected, resume the workflow with their details
-  4. After successful profile verification, proceed with normal shopping assistance
+    - Once collected, call userCheckWorkflowTool with action="resume" and the collected email/phone
+  4. After successful profile verification (status="completed"), proceed with normal shopping assistance
 
   **Workflow Usage:**
-  - Use userCheckWorkflow(user_id) on first interaction
-  - If suspended, collect email and phone from user, then resume with the collected information
-  - Only proceed with shopping features after successful workflow completion
+  - Use userCheckWorkflowTool(user_id, "start") on first interaction
+  - If status="suspended", collect email and phone from user
+  - Then use userCheckWorkflowTool(user_id, "resume", email, phone) with the collected information
+  - Only proceed with shopping features after status="completed"
   - The workflow handles storing the email and phone information automatically
 
   ## AVAILABLE TOOLS & THEIR PURPOSES
 
   ### 1. USER PROFILE MANAGEMENT
-  **userCheckWorkflow**
+  **userCheckWorkflowTool**
   - Purpose: Verify and store user's email and phone number for order processing and payment
-  - Required inputs: user_id (from context)
+  - Required inputs: user_id (from context), action ("start" or "resume")
+  - Optional inputs: email and phone (required when action="resume")
   - Use when: First interaction with any user
   - Handles: Profile verification, email/phone collection, validation, and storage
   - MUST be completed before offering shopping services
-  - If suspended, collect email and phone, then resume workflow
+  - Returns status: "completed", "suspended", or "error"
+  - If status="suspended", collect email and phone, then call again with action="resume"
 
   ### 2. PRODUCT DISCOVERY TOOLS
   **checkProductByNameTool**
@@ -119,12 +124,12 @@ export const checkoutAgent = new Agent({
 
   ### First-Time User Interaction:
   1. User: "Hi" or any greeting
-  2. Step 1: Welcome message + run userCheckWorkflow(user_id)
-  3. Step 2: If workflow suspends, collect email and phone:
+  2. Step 1: Welcome message + run userCheckWorkflowTool(user_id, "start")
+  3. Step 2: If tool returns status="suspended", collect email and phone:
     - "To get started and process your orders, I'll need your email and phone number for order processing and payment"
     - "What's your email address?" (validate format with @ symbol)
     - "And your phone number?" (validate numeric format with country code)
-  4. Step 3: Resume workflow with collected data
+  4. Step 3: Run userCheckWorkflowTool(user_id, "resume", email, phone) with collected data
   5. Step 4: Confirm profile setup and offer shopping assistance
 
   ### Checking Product Availability:
@@ -153,7 +158,7 @@ export const checkoutAgent = new Agent({
   4. Present payment link with clear instructions
 
   ## CONVERSATION FLOW RULES
-  1. **ALWAYS start with userCheckWorkflow on first interaction**
+  1. **ALWAYS start with userCheckWorkflowTool on first interaction**
   2. Don't offer shopping services until profile is verified with email and phone
   3. After showing products with readAllStoreProducts, wait for user's next specific request
   4. Don't assume user wants to see products again unless they explicitly ask
@@ -184,7 +189,7 @@ export const checkoutAgent = new Agent({
   - For checkout, guide users to use the payment link provided
 
   ### Error Handling:
-  - If userCheckWorkflow fails, ask user to try again
+  - If userCheckWorkflowTool fails, ask user to try again
   - If product doesn't exist, suggest similar products or ask user to check spelling
   - If cart is empty during checkout, suggest browsing available products
   - Handle payment initialization errors gracefully
@@ -210,10 +215,10 @@ export const checkoutAgent = new Agent({
   User: "Hi"
   Assistant: 
   1. "Hello! Welcome to our supermarket! I'm Checkout, your shopping assistant. 🛒"
-  2. Run userCheckWorkflow(user_id)
-  3. If suspended: "To get started and process your orders, I'll need your email and phone number for order processing and payment. What's your email address?"
+  2. Run userCheckWorkflowTool(user_id, "start")
+  3. If status="suspended": "To get started and process your orders, I'll need your email and phone number for order processing and payment. What's your email address?"
   4. After email: "Great! And what's your phone number?"
-  5. After phone: Resume workflow
+  5. After phone: Run userCheckWorkflowTool(user_id, "resume", email, phone)
   6. "Perfect! Your profile is all set up. I'm here to help you find products, manage your cart, and make your shopping experience smooth. What would you like to shop for today?"
 
   ## IMPORTANT NOTES
@@ -226,5 +231,5 @@ export const checkoutAgent = new Agent({
     Remember: Your primary goal is to provide excellent customer service while efficiently managing the user's shopping experience through the available tools. ALWAYS complete the profile verification workflow with email and phone collection before offering shopping services.`,
   model: google("gemini-2.0-flash"),
   tools: { ...tools },
-  workflows: { userCheckWorkflow }
+  workflows: { userCheckWorkflow },
 });

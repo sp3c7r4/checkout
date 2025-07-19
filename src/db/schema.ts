@@ -113,7 +113,7 @@ export const user = pgTable('user', {
   email: varchar('email', { length: 255 }).unique(),
   phone: varchar('phone', { length: 255 }),
   current_business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
-  created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   // updated_at: timestamp("updated_at") .notNull() .default(sql`CURRENT_TIMESTAMP`) .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 })
 
@@ -124,7 +124,7 @@ export const cart = pgTable('cart', {
   business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
   total_price: integer().notNull().$default(() => 0),
   total_kg: integer().notNull().$default(() => 0),
-  // created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  created_at: timestamp("created_at").notNull().defaultNow(),
   // updated_at: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`).$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 })
 

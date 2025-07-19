@@ -404,7 +404,8 @@ export default class Checkout {
     const username = ctx.from?.username || 'unknown';
     const firstName = ctx.from?.first_name || 'unknown';
     const userId = ctx.from?.id.toString() || 'unknown';
-    const { current_business_id } = await getUserById(userId);
+    const user = await getUserById(userId);
+    const current_business_id = user?.current_business_id;
     if(!current_business_id) return await ctx.reply('You are not associated with any business. Please contact your admin to get started.');
 
     if (!text || text.trim().length === 0) {
@@ -418,7 +419,7 @@ export default class Checkout {
     if (ctx.session.step === 'entering_quantity') {
       await ctx.reply('Please use the number keyboard above to enter quantity.');
       return;
-    }
+    };
 
     try {
       const response = await checkoutAgent.generate(text, {
