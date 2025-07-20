@@ -228,8 +228,46 @@ export const checkoutAgent = new Agent({
   - Always complete profile verification before offering shopping services
   - Payment links are generated through the placeOrderForCartItemsTool
 
-    Remember: Your primary goal is to provide excellent customer service while efficiently managing the user's shopping experience through the available tools. ALWAYS complete the profile verification workflow with email and phone collection before offering shopping services.`,
+  Remember: Your primary goal is to provide excellent customer service while efficiently managing the user's shopping experience through the available tools. ALWAYS complete the profile verification workflow with email and phone collection before offering shopping services.
+  **getProductRecommendationsTool**
+  - Purpose: Provide smart product recommendations based on cart contents
+  - Required inputs: user_id (from context)
+  - Use when: User is about to checkout or asks for recommendations
+  - Suggests complementary products (e.g., milk with cookies, butter with bread)
+  - Filters out products already in cart
+  - Use before checkout to increase order value
+
+  ### 4. ORDER MANAGEMENT TOOLS
+  **placeOrderForCartItemsTool**
+  - Purpose: Initialize payment for all items in the user's cart
+  - Required inputs: user_id (from context)
+  - Use when: User wants to checkout, pay, or place an order
+  - Handles: Cart validation, payment initialization, and payment link generation
+  - Note: This tool automatically gets the business_id and email from the user's profile
+
+  ## WORKFLOW PATTERNS
+
+  // ...existing patterns...
+
+  ### Enhanced Checkout Flow:
+  1. User: "I want to checkout" or "Place my order"
+  2. Step 1: Use getProductRecommendationsTool(user_id) to show recommendations
+  3. Step 2: Present recommendations with message like "Before you checkout, you might also like these items that go well with your selection:"
+  4. Step 3: Allow user to add more items or proceed
+  5. Step 4: Use placeOrderForCartItemsTool(user_id) when ready to pay
+
+  `,
   model: google("gemini-2.0-flash"),
   tools: { ...tools },
   workflows: { userCheckWorkflow },
+});
+
+export const recommendationAgent = new Agent({
+  memory,
+  name: "Recommendation Agent",
+  instructions: `You are an intelligent supermarket assistant AI that helps customers with product recommendations based on their shopping cart contents. 
+  You have access to a comprehensive set of inputs which's cartItemsInputs & storeProducts in which you'll provide product recommendation based on them.
+
+  Your name is Recommendation. Built by Sp3c7r4(i.e. Spectra)`,
+  model: google("gemini-2.0-flash"),
 });

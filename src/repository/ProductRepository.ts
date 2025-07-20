@@ -54,6 +54,21 @@ class ProductRepository extends BaseRepository {
     }
   }
 
+  async readProductByBusinessIdAndProductNameNext(business_id: string, product_name: string) {
+    try {
+      const lowerProductName = product_name.toLowerCase();
+      const product = await db.query.product.findMany({
+        where: (p, { eq, and, or, sql }) => and(
+          eq(p.business_id, business_id),
+          or( sql`LOWER(${p.name}) LIKE ${`%${lowerProductName}%`}`, sql`LOWER(${p.description}) LIKE ${`%${lowerProductName}%`}` )
+        )
+      })
+      return product
+    } catch(e) {
+      throw new CE_INTERNAL_SERVER(e.message);
+    }
+  }
+
   async readProductsByIds(product_ids: string[]) {
     try {
       const products = await db.query.product.findMany({

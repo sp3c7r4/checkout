@@ -1,7 +1,7 @@
 import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { LibSQLStore } from "@mastra/libsql";
-import { checkoutAgent } from "./agents";
+import { checkoutAgent, recommendationAgent } from "./agents";
 import { ContextWithMastra, registerApiRoute } from "@mastra/core/server";
 import {
   businessAddressSchema,
@@ -47,7 +47,7 @@ import { getUserPayments, handlePaystackPayment } from "../controllers/payment.c
 import { getUserOrders } from "../controllers/order.controller";
 
 export const mastra = new Mastra({
-  agents: { checkoutAgent },
+  agents: { checkoutAgent, recommendationAgent },
   workflows: { userCheckWorkflow },
   storage: new LibSQLStore({
     url: ":memory:",

@@ -84,20 +84,18 @@ const success_login_html = `
 class Mailer {
   private transporter: nodemailer.Transporter;
 
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // Use STARTTLS
-      auth: {
-        user: env.CHECKOUT_MAIL,
-        pass: env.CHECKOUT_MAIL_PASSWORD
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
+constructor() {
+  this.transporter = nodemailer.createTransport({
+    service: 'gmail', // Use service instead of host/port
+    auth: {
+      user: env.CHECKOUT_MAIL,
+      pass: env.CHECKOUT_MAIL_PASSWORD
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+}
 
   async sendMail(to: string, subject: string, text: string, attachments?: any[]): Promise<void> {
     const mailOptions = { from: `Checkout <${env.CHECKOUT_MAIL}>`, to, subject, text, attachments };

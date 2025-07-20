@@ -6,6 +6,8 @@ import CustomError from "../../utils/Error";
 import {
   createProductsKeyboard,
   getProductByBusinessIdAndProductName,
+  getProductByBusinessIdAndProductNameNext,
+  getSmartRecommendations,
   MarkDownizeProducts,
   MutateCartProducts,
   MutateProduct,
@@ -16,60 +18,134 @@ import { getEmoji } from "../../utils/Emoji";
 import Paystack from "../../utils/Paystack";
 import OrderRepository from "../../repository/OrderRepository";
 
-export const checkProductByNameTool = createTool({
-  id: "checkProductByNameTool",
-  description:
-    "This tool is used to check if a product exists in a supermarket",
+export const getProductRecommendationsTool = createTool({
+  id: "getProductRecommendationsTool", 
+  description: "This tool provides product recommendations based on cart items and suggests complementary products",
   inputSchema: z.object({
-    user_id: z
-      .string()
-      .describe("The user ID of the person checking the product"),
-    product_name: z
-      .string()
-      .describe("The name of the product you want to check"),
+    user_id: z.string().describe("The user ID for getting recommendations"),
   }),
   outputSchema: z.object({
     success: z.boolean(),
-    data: z.object({}),
+    data: z.object({
+      recommendations: z.array(z.object({})).optional(),
+      msg: z.string().optional(),
+    }),
+  }),
+  execute: async ({ context: { user_id } }) => {
+    try {
+      const { current_business_id } = await getUserById(user_id);
+      if (!current_business_id) {
+        return {
+          success: false,
+          data: { msg: "You're not linked to a store" },
+        };
+      }
+
+      // Get user's cart
+      const cart = await CartRepository.readCartByUserAndBusiness(user_id, current_business_id);
+      if (!cart || cart.products.length === 0) {
+        return {
+          success: false,
+          data: { msg: "No items in cart to base recommendations on" },
+        };
+      }
+
+      // Get all store products
+      const allProducts = await ProductRepository.readProductsByBusinessId(current_business_id);
+      
+      // Filter out products already in cart
+      const cartProductIds = cart.products.map(p => p.id);
+      const availableProducts = allProducts.filter(p => !cartProductIds.includes(p.id));
+
+      // Get recommendations based on cart items
+      const recommendations = await getSmartRecommendations(cart.products, availableProducts);
+
+      // if (recommendations.length === 0) {
+      //   return {
+      //     success: false,
+      //     data: { msg: "No recommendations available at the moment" },
+      //   };
+      // }
+      console.log('Testing recommendations: ', recommendations)
+      // const message = `<b>🛒 Based on your cart, you might also like:</b>\n`;
+      // // const reply_markup = createProductsKeyboard(recommendations);
+      // console.log('Testing message: ', message)
+      // CheckoutEmitter.emit("sendProductRecommendations", {
+      //   user_id,
+      //   message,
+      //   data: recommendations
+      // });
+
+      return { success: true, data: { recommendations } };
+    } catch (e) {
+      return {
+        success: false,
+        data: { msg: e instanceof Error ? e.message : String(e) },
+      };
+    }
+  },
+});
+
+export const checkProductByNameTool = createTool({
+  id: "checkProductByNameTool",
+  description: "This tool is used to check if a product exists in a supermarket",
+  inputSchema: z.object({
+    user_id: z.string().describe("The user ID of the person checking the product"),
+    product_name: z.string().describe("The name of the product you want to check"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    data: z.object({}).optional().describe("The product details if found"),
   }),
   execute: async ({ context: { product_name, user_id } }) => {
     try {
       const { current_business_id } = await getUserById(user_id);
-      if (!current_business_id)
-        return {
-          success: false,
-          data: {
-            msg: `I don't think you're linked to a store please do that.`,
-          },
+      if (!current_business_id) {
+        return { 
+          success: false, 
+          data: { msg: `I don't think you're linked to a store please do that.` }
+        };
+      }
+
+      const resp = await getProductByBusinessIdAndProductNameNext(current_business_id, product_name);
+      
+      if (!resp || resp.length < 1) {
+        return { success: false, data: { msg: `I couldn't find the product you're looking for.` } };
+      } else if (resp.length === 1) {
+        const product = resp[0];
+        const mutated_resp = MutateProduct(product);
+        const reply_markup = {
+          inline_keyboard: [
+            [{ text: "Add to Cart", callback_data: `addToCart_${product.id}` }],
+          ],
         };
 
-      const resp = await getProductByBusinessIdAndProductName(
-        current_business_id,
-        product_name
-      );
-      if (!resp)
-        return {
-          success: false,
-          data: { msg: `I couldn't find the product you're looking for.` },
-        };
-
-      const mutated_resp = MutateProduct(resp);
-      const reply_markup = {
-        inline_keyboard: [
-          [{ text: "Add to Cart", callback_data: `addToCart_${resp.id}` }],
-        ],
-      };
-
-      if (resp)
+        // Fixed: Check 'product' instead of 'resp'
         CheckoutEmitter.emit("foundProduct", {
           data: mutated_resp,
           user_id,
-          message: `<b>Yes ${resp.name} is available 😊</b>\n`,
+          message: `<b>Yes ${product.name} is available 😊</b>\n`,
           reply_markup,
         });
+  
+        return { success: true, data: { resp: mutated_resp } };
+      } else if (resp.length > 1) {
+        const message = `Multiple products found for <b>${product_name.toUpperCase()}</b>:\n`;
+        const reply_markup = createProductsKeyboard(resp);
+        CheckoutEmitter.emit("sendStoreProducts", { 
+          user_id, 
+          message, 
+          reply_markup 
+        });
+        
+        const mutated_resp = MutateCartProducts(resp);
+        return { success: true, data: { resp: mutated_resp } };
+      }
 
-      return { success: true, data: { resp: mutated_resp } };
+      // This shouldn't be reached, but just in case
+      return { success: false, data: { msg: "Unexpected error occurred" } };
     } catch (e) {
+      console.error("checkProductByNameTool error:", e);
       return {
         success: false,
         data: { msg: e instanceof Error ? e.message : String(e) },
@@ -167,8 +243,7 @@ export const readAllStoreProducts = createTool({
         };
 
       // await Promise.all([getUserById(user_id), getBusinessById(current_business_id)]);
-      const resp =
-        await ProductRepository.readProductsByBusinessId(current_business_id);
+      const resp = await ProductRepository.readProductsByBusinessId(current_business_id);
 
       const message =
         resp.length > 0

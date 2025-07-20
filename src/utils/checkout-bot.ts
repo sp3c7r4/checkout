@@ -96,6 +96,57 @@ export default class Checkout {
     };
   }
 
+  private escapeMarkdown(text: string): string {
+    // Smart Markdown V2 escaping that preserves formatting where appropriate
+    return text
+      // First handle code blocks and inline code to preserve them
+      .replace(/```([\s\S]*?)```/g, (match) => match) // Preserve code blocks
+      .replace(/`([^`]+)`/g, (match) => match) // Preserve inline code
+      
+      // Escape special characters but preserve intentional formatting
+      .replace(/([_*[\]()~>#+=|{}.!-])/g, (match, char, index, string) => {
+        // Don't escape if it's part of intentional formatting
+        const prevChar = string[index - 1];
+        const nextChar = string[index + 1];
+        
+        // Preserve bold formatting (**text**)
+        if (char === '*' && (
+          (prevChar === '*' || nextChar === '*') ||
+          (string.slice(index - 1, index + 2) === '**')
+        )) {
+          return char;
+        }
+        
+        // Preserve italic formatting (_text_)
+        if (char === '_' && (
+          (prevChar === '_' || nextChar === '_') ||
+          (string.slice(index - 1, index + 2) === '__')
+        )) {
+          return char;
+        }
+        
+        // Preserve links [text](url) and inline code
+        if ((char === '[' || char === ']' || char === '(' || char === ')') && 
+            /\[([^\]]+)\]\(([^)]+)\)/.test(string.slice(Math.max(0, index - 50), index + 50))) {
+          return char;
+        }
+        
+        // Preserve intentional line breaks and headers
+        if (char === '#' && (index === 0 || string[index - 1] === '\n')) {
+          return char;
+        }
+        
+        // Escape everything else
+        return '\\' + char;
+      })
+      
+      // Clean up any double escaping that might have occurred
+      .replace(/\\\\([_*[\]()~>#+=|{}.!-])/g, '\\$1')
+      
+      // Ensure proper line breaks are preserved
+      .replace(/\n/g, '\n');
+  }
+
   // Sends a message to a specific chat/user via the bot
   // Usage: await this.sendMessage(chatId, "Hello, user")
   async sendMessage(chatId: number | string, message: string, data: any) {
@@ -173,7 +224,7 @@ export default class Checkout {
     CheckoutEmitter.on('storeEmailPhone', ({ user_id, message, data }) => {
       console.log("Store email and phone event - CALLED !!!")
       this.BotSendMessageState = false
-      this.sendMessageImage(user_id, message, data, 'available.png');
+      this.sendMessageImage(user_id, message, data, 'email-phone.png');
     });
 
     CheckoutEmitter.on('sendReceipt', ({ user_id, message, data, imageBuffer }) => {
@@ -186,6 +237,12 @@ export default class Checkout {
       console.log("View product event - CALLED !!!")
       this.BotSendMessageState = false
       this.sendMessageImageLink(user_id, message, data, image_link, reply_markup);
+    });
+
+    CheckoutEmitter.on('sendProductRecommendations', ({ user_id, message, reply_markup }) => {
+      console.log("Product recommendations event - CALLED !!!")
+      this.BotSendMessageState = false
+      this.sendMessageImage(user_id, message, '', 'payment.png', reply_markup);
     });
   }
 
@@ -393,10 +450,10 @@ export default class Checkout {
     this.bot.on('text', this.handleTextMessage.bind(this));
   }
 
-  private escapeMarkdown(text: string): string {
-    // Escape special Markdown V2 characters - includes '!' which was missing
-    return text.replace(/[_*[\]()~>#+=|{}.!-]/g, '\\$&');
-  }
+  // private escapeMarkdown(text: string): string {
+  //   // Escape special Markdown V2 characters - includes '!' which was missing
+  //   return text.replace(/[_*[\]()~>#+=|{}.!-]/g, '\\$&');
+  // }
 
   private async handleTextMessage(ctx: MyContext) {
     // console.log(JSON.stringify(ctx))
