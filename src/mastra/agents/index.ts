@@ -10,6 +10,15 @@ const prodConfig = {
   vector: new PgVector({
     connectionString: env.DB_MEMORY,
     schemaName: "vector",
+    pgPoolOptions: {
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      statement_timeout: 30000,
+      query_timeout: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000
+    }
   }),
   storage: new PostgresStore({
     connectionString: env.DB_MEMORY,
