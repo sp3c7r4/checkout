@@ -1,4 +1,5 @@
 import { Telegraf, Context, session } from 'telegraf';
+import Redis from 'ioredis';
 import { checkoutAgent } from '../mastra/agents';
 import { getUserById } from '../helpers/user';
 import UserBusinessRepository from '../repository/UserBusinessRepository';
@@ -22,13 +23,158 @@ interface CheckoutSession {
   };
   quantity?: string;
   step?: 'idle' | 'entering_quantity' | 'editing_quantity' | 'confirming_order';
-  quantityMessageId?: number; // Add this line
+  quantityMessageId?: number;
+  botSendMessageState?: boolean; // ✅ Added per-user message state
 }
 
 export interface MyContext extends Context {
   currentMessageId?: number;
   currentResponse?: string;
   session: CheckoutSession;
+}
+
+// Redis Session Manager Class
+class RedisSessionManager {
+  private redis: Redis;
+  private sessionTTL: number;
+  private keyPrefix: string;
+
+  constructor(redisConfig?: any, ttl: number = 86400, keyPrefix: string = 'telegram:session:') {
+    this.redis = new Redis(redisConfig || {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0'),
+      retryDelayOnFailover: 100,
+      enableReadyCheck: true,
+      lazyConnect: true,
+      maxRetriesPerRequest: 3,
+    });
+    
+    this.sessionTTL = ttl; // 24 hours default
+    this.keyPrefix = keyPrefix;
+
+    // Handle Redis connection events
+    this.redis.on('connect', () => {
+      console.log('✅ Redis connected for session management');
+    });
+
+    this.redis.on('error', (err) => {
+      console.error('❌ Redis connection error:', err);
+    });
+
+    this.redis.on('ready', () => {
+      console.log('🚀 Redis ready for session management');
+    });
+  }
+
+  private getSessionKey(userId: string | number): string {
+    return `${this.keyPrefix}${userId}`;
+  }
+
+  async getSession(userId: string | number): Promise<CheckoutSession> {
+    try {
+      const key = this.getSessionKey(userId);
+      const sessionData = await this.redis.get(key);
+      
+      if (!sessionData) {
+        return this.getDefaultSession();
+      }
+
+      const parsed = JSON.parse(sessionData);
+      return { ...this.getDefaultSession(), ...parsed };
+    } catch (error) {
+      console.error('Error getting session from Redis:', error);
+      return this.getDefaultSession();
+    }
+  }
+
+  async setSession(userId: string | number, session: CheckoutSession): Promise<void> {
+    try {
+      const key = this.getSessionKey(userId);
+      const sessionData = JSON.stringify(session);
+      
+      await this.redis.setex(key, this.sessionTTL, sessionData);
+    } catch (error) {
+      console.error('Error setting session in Redis:', error);
+      throw error;
+    }
+  }
+
+  async deleteSession(userId: string | number): Promise<void> {
+    try {
+      const key = this.getSessionKey(userId);
+      await this.redis.del(key);
+    } catch (error) {
+      console.error('Error deleting session from Redis:', error);
+    }
+  }
+
+  async extendSession(userId: string | number): Promise<void> {
+    try {
+      const key = this.getSessionKey(userId);
+      await this.redis.expire(key, this.sessionTTL);
+    } catch (error) {
+      console.error('Error extending session TTL:', error);
+    }
+  }
+
+  private getDefaultSession(): CheckoutSession {
+    return {
+      step: 'idle',
+      quantity: '',
+      botSendMessageState: true // ✅ Default to true for new sessions
+    };
+  }
+
+  async cleanup(): Promise<void> {
+    try {
+      await this.redis.quit();
+      console.log('🔄 Redis session manager cleaned up');
+    } catch (error) {
+      console.error('Error cleaning up Redis session manager:', error);
+    }
+  }
+
+  // Health check method
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.redis.ping();
+      return result === 'PONG';
+    } catch {
+      return false;
+    }
+  }
+}
+
+// Custom session middleware for Redis
+function createRedisSessionMiddleware(sessionManager: RedisSessionManager) {
+  return async (ctx: MyContext, next: () => Promise<void>) => {
+    const userId = ctx.from?.id;
+    
+    if (!userId) {
+      return next();
+    }
+
+    // Load session from Redis
+    ctx.session = await sessionManager.getSession(userId);
+
+    // Extend session TTL on each interaction
+    await sessionManager.extendSession(userId);
+
+    // Store original session for comparison
+    const originalSession = JSON.stringify(ctx.session);
+
+    try {
+      await next();
+    } finally {
+      // Save session back to Redis if it changed
+      const currentSession = JSON.stringify(ctx.session);
+      if (originalSession !== currentSession) {
+        await sessionManager.setSession(userId, ctx.session);
+      }
+    }
+  };
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,26 +192,57 @@ const help_commands =
 
 export default class Checkout {
   private bot: Telegraf<MyContext>;
-  private readonly MAX_MESSAGE_LENGTH = 4096; // Telegram's message length limit
-  private BotSendMessageState = true;
+  private readonly MAX_MESSAGE_LENGTH = 4096;
+  // ❌ Removed: private BotSendMessageState = true; (global state)
+  private sessionManager: RedisSessionManager;
 
-  constructor(token: string) {
+  constructor(token: string, redisConfig?: any) {
+    // Initialize Redis session manager
+    this.sessionManager = new RedisSessionManager(redisConfig);
+    
     // Create Telegraf bot instance
     this.bot = new Telegraf<MyContext>(token);
     
     // Setup middleware and handlers
     this.setupMiddleware();
     this.setupHandlers();
-    this.setupListeners()
-    this.setupCallbacks()
+    this.setupListeners();
+    this.setupCallbacks();
     
     // Start the bot
     this.bot.launch();
     
     // Enable graceful stop
-    process.once('SIGINT', () => this.bot.stop('SIGINT'));
-    process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
+    process.once('SIGINT', () => this.gracefulStop('SIGINT'));
+    process.once('SIGTERM', () => this.gracefulStop('SIGTERM'));
   }
+
+  // ✅ Helper methods for user-specific bot send message state
+  private async getBotSendMessageState(userId: string | number): Promise<boolean> {
+    const session = await this.sessionManager.getSession(userId);
+    return session.botSendMessageState ?? true;
+  }
+
+  private async setBotSendMessageState(userId: string | number, state: boolean): Promise<void> {
+    const session = await this.sessionManager.getSession(userId);
+    session.botSendMessageState = state;
+    await this.sessionManager.setSession(userId, session);
+  }
+
+  private async gracefulStop(signal: string) {
+    console.log(`🛑 Received ${signal}, shutting down gracefully...`);
+    
+    try {
+      this.bot.stop(signal);
+      await this.sessionManager.cleanup();
+      console.log('✅ Bot stopped gracefully');
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ Error during graceful shutdown:', error);
+      process.exit(1);
+    }
+  }
+
   private createInlineNumberKeyboard(): InlineKeyboardMarkup {
     return {
       inline_keyboard: [
@@ -97,19 +274,13 @@ export default class Checkout {
   }
 
   private escapeMarkdown(text: string): string {
-    // Smart Markdown V2 escaping that preserves formatting where appropriate
     return text
-      // First handle code blocks and inline code to preserve them
-      .replace(/```([\s\S]*?)```/g, (match) => match) // Preserve code blocks
-      .replace(/`([^`]+)`/g, (match) => match) // Preserve inline code
-      
-      // Escape special characters but preserve intentional formatting
+      .replace(/```([\s\S]*?)```/g, (match) => match)
+      .replace(/`([^`]+)`/g, (match) => match)
       .replace(/([_*[\]()~>#+=|{}.!-])/g, (match, char, index, string) => {
-        // Don't escape if it's part of intentional formatting
         const prevChar = string[index - 1];
         const nextChar = string[index + 1];
         
-        // Preserve bold formatting (**text**)
         if (char === '*' && (
           (prevChar === '*' || nextChar === '*') ||
           (string.slice(index - 1, index + 2) === '**')
@@ -117,7 +288,6 @@ export default class Checkout {
           return char;
         }
         
-        // Preserve italic formatting (_text_)
         if (char === '_' && (
           (prevChar === '_' || nextChar === '_') ||
           (string.slice(index - 1, index + 2) === '__')
@@ -125,42 +295,32 @@ export default class Checkout {
           return char;
         }
         
-        // Preserve links [text](url) and inline code
         if ((char === '[' || char === ']' || char === '(' || char === ')') && 
             /\[([^\]]+)\]\(([^)]+)\)/.test(string.slice(Math.max(0, index - 50), index + 50))) {
           return char;
         }
         
-        // Preserve intentional line breaks and headers
         if (char === '#' && (index === 0 || string[index - 1] === '\n')) {
           return char;
         }
         
-        // Escape everything else
         return '\\' + char;
       })
-      
-      // Clean up any double escaping that might have occurred
       .replace(/\\\\([_*[\]()~>#+=|{}.!-])/g, '\\$1')
-      
-      // Ensure proper line breaks are preserved
       .replace(/\n/g, '\n');
   }
 
-  // Sends a message to a specific chat/user via the bot
-  // Usage: await this.sendMessage(chatId, "Hello, user")
   async sendMessage(chatId: number | string, message: string, data: any) {
-    message = `${message}\n${data ? data.trim() : undefined}`
+    message = `${message}\n${data ? data.trim() : undefined}`;
     await this.bot.telegram.sendMessage(
       chatId,
-      // escapers.HTML(message),
       message,
       { parse_mode: 'HTML' }
     );
   }
 
   async sendMessageImage(chatId: number | string, message: string, data: any, image: string, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined = undefined) {
-    message = `${message}\n${data ? data?.trim() : ``}`
+    message = `${message}\n${data ? data?.trim() : ``}`;
     
     const imagePath = path.join(__dirname, `../../src/assets/${image}`);
     
@@ -172,7 +332,7 @@ export default class Checkout {
   }
 
   async sendMessageImageLink(chatId: number | string, message: string, data: any, link: string, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined = undefined) {
-    message = `${message}\n${data ? data?.trim() : ``}`
+    message = `${message}\n${data ? data?.trim() : ``}`;
     
     await this.bot.telegram.sendPhoto(
       chatId,
@@ -182,7 +342,7 @@ export default class Checkout {
   }
 
   async sendMessageDocument(chatId: number | string, message: string, data: any, document: Buffer, reply_markup?: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined) {
-    message = `${message}\n${data ? data?.trim() : ``}`
+    message = `${message}\n${data ? data?.trim() : ``}`;
     
     await this.bot.telegram.sendDocument(
       chatId,
@@ -192,68 +352,64 @@ export default class Checkout {
   }
 
   private setupListeners() {
-    CheckoutEmitter.on('sendStoreProducts', ({ user_id, message, data, reply_markup }) => {
-      console.log("Listed product event - CALLED !!!")
-      this.BotSendMessageState = false
+    // ✅ Updated to use per-user isolated state
+    CheckoutEmitter.on('sendStoreProducts', async ({ user_id, message, data, reply_markup }) => {
+      console.log("Listed product event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, data, 'products.png', reply_markup);
     });
 
-    CheckoutEmitter.on('foundProduct', ({ user_id, message, data, reply_markup }:{user_id: string, message: string, data: any, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined }) => {
-      console.log("Product found event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('foundProduct', async ({ user_id, message, data, reply_markup }:{user_id: string, message: string, data: any, reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | undefined }) => {
+      console.log("Product found event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, data, 'available.png', reply_markup);
     });
 
-    CheckoutEmitter.on('readCartItems', ({user_id, message, data, reply_markup}) => {
-      console.log("Cart items read event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('readCartItems', async ({user_id, message, data, reply_markup}) => {
+      console.log("Cart items read event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, data, 'cart.png', reply_markup);
-    })
+    });
     
-    CheckoutEmitter.on('removedCartItem', ({user_id, message, data, reply_markup}) => {
-      console.log("Removed Cart item event - CALLED !!!")
+    CheckoutEmitter.on('removedCartItem', async ({user_id, message, data, reply_markup}) => {
+      console.log("Removed Cart item event - CALLED !!!");
       this.sendMessageImage(user_id, message, data, 'removed.png', reply_markup);
-    })
+    });
     
-    CheckoutEmitter.on('paymentEvent', ({user_id, message, data, reply_markup}) => {
-      console.log("Payment event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('paymentEvent', async ({user_id, message, data, reply_markup}) => {
+      console.log("Payment event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, data, 'payment.png', reply_markup);
-    })
+    });
 
-    CheckoutEmitter.on('storeEmailPhone', ({ user_id, message, data }) => {
-      console.log("Store email and phone event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('storeEmailPhone', async ({ user_id, message, data }) => {
+      console.log("Store email and phone event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, data, 'email-phone.png');
     });
 
-    CheckoutEmitter.on('sendReceipt', ({ user_id, message, data, imageBuffer }) => {
-      console.log("Send receipt event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('sendReceipt', async ({ user_id, message, data, imageBuffer }) => {
+      console.log("Send receipt event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageDocument(user_id, message, data, imageBuffer);
     });
 
-    CheckoutEmitter.on('viewProduct', ({ user_id, message, data, image_link, reply_markup }) => {
-      console.log("View product event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('viewProduct', async ({ user_id, message, data, image_link, reply_markup }) => {
+      console.log("View product event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImageLink(user_id, message, data, image_link, reply_markup);
     });
 
-    CheckoutEmitter.on('sendProductRecommendations', ({ user_id, message, reply_markup }) => {
-      console.log("Product recommendations event - CALLED !!!")
-      this.BotSendMessageState = false
+    CheckoutEmitter.on('sendProductRecommendations', async ({ user_id, message, reply_markup }) => {
+      console.log("Product recommendations event - CALLED !!!");
+      await this.setBotSendMessageState(user_id, false);
       this.sendMessageImage(user_id, message, '', 'payment.png', reply_markup);
     });
   }
 
   private setupMiddleware() {
-    // Add session middleware
-    this.bot.use(session({
-      defaultSession: (): CheckoutSession => ({
-        step: 'idle',
-        quantity: ''
-      })
-    }));
+    // Add Redis session middleware (replaces the old session middleware)
+    this.bot.use(createRedisSessionMiddleware(this.sessionManager));
 
     // Global error handler
     this.bot.catch((err: any, ctx: MyContext) => {
@@ -273,43 +429,53 @@ export default class Checkout {
       ctx.currentResponse = '';
       await next();
     });
+
+    // Health check middleware
+    this.bot.use(async (ctx, next) => {
+      const isRedisHealthy = await this.sessionManager.isHealthy();
+      if (!isRedisHealthy) {
+        console.warn('⚠️ Redis is not healthy, but continuing with degraded session management');
+      }
+      await next();
+    });
   }
 
   private setupCallbacks() {
     this.bot.on('callback_query', async (ctx) => {
       const data = 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
-      if(!data) throw new Error('Invalid callback data!')
+      if(!data) throw new Error('Invalid callback data!');
+      
       if (data === 'cart_operation_cancel') {
         ctx.session.step = 'idle';
         ctx.session.currentProduct = undefined;
         ctx.session.quantity = '';
         ctx.session.quantityMessageId = undefined;
+        ctx.session.botSendMessageState = true; // ✅ Reset to isolated state
         await ctx.answerCbQuery('Cart operation canceled 😊⚡');
         await ctx.reply('Cart operation canceled. 😊⚡');
-        this.BotSendMessageState = true;
         return;
       }
+      
       if(data.startsWith('removeProductId_')) {
         const productId = data.replace('removeProductId_', '');
-        const product = await ProductRepository.readOneById(productId)
+        const product = await ProductRepository.readOneById(productId);
         if(!product) throw new Error('Invalid Product. Not found😑');
-        const userId = String(ctx.from.id)
+        const userId = String(ctx.from.id);
         const { current_business_id } = await getUserById(userId);
         CartRepository.removeProductFromCart(userId, current_business_id, productId);
         CheckoutEmitter.emit('removedCartItem', { user_id: userId, message: `${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()} removed successfully`});
       }
+      
       if (data.startsWith('addToCart_')) {
         const productId = data.replace('addToCart_', '');
         const product = await ProductRepository.readOneById(productId);
         
-        // Store in session
         ctx.session.currentProduct = {
           id: productId,
           name: product.name,
           price: product.price
         };
 
-        
         ctx.session.step = 'entering_quantity';
         ctx.session.quantity = '';
         
@@ -322,9 +488,10 @@ export default class Checkout {
         );
 
         ctx.session.quantityMessageId = message.message_id;
-        this.BotSendMessageState = false;
+        ctx.session.botSendMessageState = false; // ✅ Set isolated state
         return;
       }
+      
       if (data.startsWith('cartProductId_')) {
         const productId = data.replace('cartProductId_', '');
         const product = await ProductRepository.readOneById(productId);
@@ -336,21 +503,22 @@ export default class Checkout {
         };
 
         const reply_markup = {
-        inline_keyboard: [
-          [
-            { text: "Edit Product", callback_data: `editProductId_${productId}` },
-            { text: "Remove Product", callback_data: `removeProductId_${productId}` },
+          inline_keyboard: [
+            [
+              { text: "Edit Product", callback_data: `editProductId_${productId}` },
+              { text: "Remove Product", callback_data: `removeProductId_${productId}` },
+            ],
+            [
+              { text: "Cancel", callback_data: `cart_operation_cancel` },
+            ],
           ],
-          [
-            { text: "Cancel", callback_data: `cart_operation_cancel` },
-          ],
-        ],
-      };
+        };
 
-      CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
-      this.BotSendMessageState = false;
-      return await ctx.answerCbQuery(`You selected ${product.name}`);
+        CheckoutEmitter.emit('readCartItems', ({ user_id: ctx.from.id, message: `<b>${product.name[0].toUpperCase()}${product.name.slice(1).toLowerCase()}</b>`, data: MutateCartProduct({...ctx.session.currentProduct, quantity: ctx.session.quantity}), reply_markup }));
+        ctx.session.botSendMessageState = false; // ✅ Set isolated state
+        return await ctx.answerCbQuery(`You selected ${product.name}`);
       }
+      
       if (data.startsWith('editProductId_')) {
         const productId = data.replace('editProductId_', '');
         const product = await ProductRepository.readOneById(productId);
@@ -359,19 +527,17 @@ export default class Checkout {
           return await ctx.answerCbQuery('Product not found');
         }
 
-        // Get current cart item to show existing quantity
         const userId = String(ctx.from.id);
         const { current_business_id } = await getUserById(userId);
         const cartItem = await CartRepository.getCartItem(userId, current_business_id, productId);
         
-        // Store in session with edit mode flag
         ctx.session.currentProduct = {
           id: productId,
           name: product.name,
           price: product.price
         };
-        ctx.session.step = 'editing_quantity'; // Different step to distinguish from adding
-        ctx.session.quantity = cartItem?.quantity?.toString() || '1'; // Pre-populate with existing quantity
+        ctx.session.step = 'editing_quantity';
+        ctx.session.quantity = cartItem?.quantity?.toString() || '1';
         
         await ctx.answerCbQuery('Edit quantity');
         const message = await ctx.reply(
@@ -382,9 +548,10 @@ export default class Checkout {
         );
 
         ctx.session.quantityMessageId = message.message_id;
-        this.BotSendMessageState = false;
+        ctx.session.botSendMessageState = false; // ✅ Set isolated state
         return;
       }
+      
       if (data.startsWith('view_product:')) {
         const productId = data.replace('view_product:', '');
         const product = await ProductRepository.readOneById(productId);
@@ -395,34 +562,23 @@ export default class Checkout {
           price: product.price
         };
 
-      //   const reply_markup = {
-      //   inline_keyboard: [
-      //     [
-      //       { text: "Edit Product", callback_data: `editProductId_${productId}` },
-      //       { text: "Remove Product", callback_data: `removeProductId_${productId}` },
-      //     ],
-      //     [
-      //       { text: "Cancel", callback_data: `cart_operation_cancel` },
-      //     ],
-      //   ],
-      // };
-
-      const mutated_resp = MutateProduct(product);
-      const reply_markup = { inline_keyboard: [ [ { text: "Add to Cart", callback_data: `addToCart_${product.id}` }, ], ], };
-      
-      CheckoutEmitter.emit("viewProduct", { data: mutated_resp, user_id: ctx?.from?.id, message: `<b>Yes ${product.name} is available 😊</b>\n`, reply_markup, image_link: product.image });
-      this.BotSendMessageState = false;
-      return await ctx.answerCbQuery(`You selected ${product.name}`);
+        const mutated_resp = MutateProduct(product);
+        const reply_markup = { inline_keyboard: [ [ { text: "Add to Cart", callback_data: `addToCart_${product.id}` }, ], ], };
+        
+        CheckoutEmitter.emit("viewProduct", { data: mutated_resp, user_id: ctx?.from?.id, message: `<b>Yes ${product.name} is available 😊</b>\n`, reply_markup, image_link: product.image });
+        ctx.session.botSendMessageState = false; // ✅ Set isolated state
+        return await ctx.answerCbQuery(`You selected ${product.name}`);
       }
+      
       if (ctx.session.step === 'entering_quantity' || ctx.session.step === 'editing_quantity') {
         return await this.handleNumberKeyboard(ctx, data);
       }
+      
       await ctx.answerCbQuery('Unknown option');
     });
   }
 
   private setupHandlers() {
-    // Handle /start command
     this.bot.start(async (ctx) => {
       let businessInfo;
       const payload = ctx.payload;
@@ -441,42 +597,35 @@ export default class Checkout {
       return this.sendMessageImage(ctx.from.id, message, '', 'welcome.png', );
     });
 
-    // Handle /help command
     this.bot.help(async (ctx) => {
       return this.sendMessageImage(ctx.from.id, `You can use this bot with this couple of commands. Enjoy 😊`, '', 'commands.png', );
     });
 
-    // Handle text messages
     this.bot.on('text', this.handleTextMessage.bind(this));
   }
 
-  // private escapeMarkdown(text: string): string {
-  //   // Escape special Markdown V2 characters - includes '!' which was missing
-  //   return text.replace(/[_*[\]()~>#+=|{}.!-]/g, '\\$&');
-  // }
-
   private async handleTextMessage(ctx: MyContext) {
-    // console.log(JSON.stringify(ctx))
     const text = ctx?.text;
     const username = ctx.from?.username || 'unknown';
     const firstName = ctx.from?.first_name || 'unknown';
     const userId = ctx.from?.id.toString() || 'unknown';
     const user = await getUserById(userId);
     const current_business_id = user?.current_business_id;
+    
     if(!current_business_id) return await ctx.reply('You are not associated with any business. Please contact your admin to get started.');
 
     if (!text || text.trim().length === 0) {
       await ctx.reply('Please send a valid message.');
       return;
     }
-    console.log("Context Mode", ctx.session.step)
+    
+    console.log("Context Mode", ctx.session.step);
     console.log(`Info\nchat-id: ${userId},text: ${text}, userId: ${userId}, username: ${username}, firstName: ${firstName}, current_business_id: ${current_business_id}`);
     
-    // If user is in quantity entry mode, ignore text messages
     if (ctx.session.step === 'entering_quantity') {
       await ctx.reply('Please use the number keyboard above to enter quantity.');
       return;
-    };
+    }
 
     try {
       const response = await checkoutAgent.generate(text, {
@@ -490,12 +639,14 @@ export default class Checkout {
         ],
       });
       
-      if(this.BotSendMessageState) ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
+      // ✅ Use isolated bot send message state
+      const botSendMessageState = await this.getBotSendMessageState(userId);
+      if(botSendMessageState) ctx.reply(this.escapeMarkdown(response.text), { parse_mode: 'MarkdownV2' });
       return;
     } catch (error) {
       console.error('Error processing message:', error);
-      const { message } = error
-      console.log("Testing Error:\n\n\n", message)
+      const { message } = error;
+      console.log("Testing Error:\n\n\n", message);
       
       if (message?.includes('contents.parts must not be empty')) {
         console.log('Clearing problematic memory thread...');
@@ -503,14 +654,17 @@ export default class Checkout {
           const { message } = error;
           const index = (message.match(/contents\[(\d+)\]/) || [])[1];
           await deleteWithIndex(Number(index));
-          if (this.BotSendMessageState) await ctx.reply(this.escapeMarkdown(`I didn't get that message, could you please send it again?`), { parse_mode: 'MarkdownV2' });
+          // ✅ Use isolated bot send message state
+          const botSendMessageState = await this.getBotSendMessageState(userId);
+          if (botSendMessageState) await ctx.reply(this.escapeMarkdown(`I didn't get that message, could you please send it again?`), { parse_mode: 'MarkdownV2' });
         } catch (err) {
-          throw err
+          throw err;
         }
       }
-      throw error
+      throw error;
     } finally {
-      this.BotSendMessageState = true;
+      // ✅ Reset isolated state
+      await this.setBotSendMessageState(userId, true);
     }
   }
 
@@ -534,98 +688,92 @@ export default class Checkout {
             finalText
           );
         } catch (editError) {
-          // If editing fails, send a new message
           await ctx.reply(finalText);
         }
       } else {
         await ctx.reply('❌ Failed to add to cart. Please try again.');
       }
 
-      // Reset session
+      // ✅ Reset session with isolated state
       ctx.session.step = 'idle';
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
-      this.BotSendMessageState = true;
+      ctx.session.botSendMessageState = true;
 
     } catch (error) {
       console.error('Error adding to cart:', error);
       await ctx.reply('❌ Error adding to cart');
       
-      // Reset session on error
+      // ✅ Reset session on error with isolated state
       ctx.session.step = 'idle';
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
-      this.BotSendMessageState = true;
+      ctx.session.botSendMessageState = true;
     }
   }
 
   private async handleNumberKeyboard(ctx: MyContext, data: string) {
-  if (!ctx.session.currentProduct || !ctx.session.quantityMessageId) {
-    await ctx.answerCbQuery('Something went wrong. Please try again.');
-    ctx.session.step = 'idle';
-    return;
-  }
-
-  try {
-    switch (data) {
-      case '⌫':
-        // Clear/backspace
-        if (ctx.session.quantity && ctx.session.quantity.length > 0) {
-          ctx.session.quantity = ctx.session.quantity.slice(0, -1);
-        }
-        await this.updateQuantityMessage(ctx);
-        await ctx.answerCbQuery('Deleted');
-        break;
-
-      case '✅':
-        // Confirm and add/update cart
-        const quantity = parseInt(ctx.session.quantity || '0');
-        if (quantity > 0) {
-          await ctx.answerCbQuery(ctx.session.step === 'editing_quantity' ? 'Updating cart...' : 'Adding to cart...');
-          
-          if (ctx.session.step === 'editing_quantity') {
-            await this.updateCartItem(ctx, ctx.session.currentProduct, quantity);
-          } else {
-            await this.addToCart(ctx, ctx.session.currentProduct, quantity);
-          }
-        } else {
-          await ctx.answerCbQuery('Please enter a valid quantity');
-        }
-        break;
-
-      case 'cancel':
-        // Cancel the operation
-        ctx.session.step = 'idle';
-        ctx.session.currentProduct = undefined;
-        ctx.session.quantity = '';
-        ctx.session.quantityMessageId = undefined;
-        await ctx.answerCbQuery('Operation canceled 😊⚡');
-        await ctx.reply('Operation canceled. 😊⚡');
-        this.BotSendMessageState = true;
-        break;
-
-      default:
-        // Handle number input (0-9)
-        if (/^\d$/.test(data)) {
-          // Prevent leading zeros unless it's just "0"
-          if (ctx.session.quantity === '0' && data !== '0') {
-            ctx.session.quantity = data;
-          } else if (ctx.session.quantity !== '0') {
-            ctx.session.quantity = (ctx.session.quantity || '') + data;
-          }
-          
-          await this.updateQuantityMessage(ctx);
-          await ctx.answerCbQuery(data);
-        } else {
-          await ctx.answerCbQuery('Invalid input');
-        }
+    if (!ctx.session.currentProduct || !ctx.session.quantityMessageId) {
+      await ctx.answerCbQuery('Something went wrong. Please try again.');
+      ctx.session.step = 'idle';
+      return;
     }
-  } catch (error) {
-    console.error('Error handling number keyboard:', error);
-    await ctx.answerCbQuery('Error processing input');
-  }
+
+    try {
+      switch (data) {
+        case '⌫':
+          if (ctx.session.quantity && ctx.session.quantity.length > 0) {
+            ctx.session.quantity = ctx.session.quantity.slice(0, -1);
+          }
+          await this.updateQuantityMessage(ctx);
+          await ctx.answerCbQuery('Deleted');
+          break;
+
+        case '✅':
+          const quantity = parseInt(ctx.session.quantity || '0');
+          if (quantity > 0) {
+            await ctx.answerCbQuery(ctx.session.step === 'editing_quantity' ? 'Updating cart...' : 'Adding to cart...');
+            
+            if (ctx.session.step === 'editing_quantity') {
+              await this.updateCartItem(ctx, ctx.session.currentProduct, quantity);
+            } else {
+              await this.addToCart(ctx, ctx.session.currentProduct, quantity);
+            }
+          } else {
+            await ctx.answerCbQuery('Please enter a valid quantity');
+          }
+          break;
+
+        case 'cancel':
+          ctx.session.step = 'idle';
+          ctx.session.currentProduct = undefined;
+          ctx.session.quantity = '';
+          ctx.session.quantityMessageId = undefined;
+          ctx.session.botSendMessageState = true; // ✅ Reset isolated state
+          await ctx.answerCbQuery('Operation canceled 😊⚡');
+          await ctx.reply('Operation canceled. 😊⚡');
+          break;
+
+        default:
+          if (/^\d$/.test(data)) {
+            if (ctx.session.quantity === '0' && data !== '0') {
+              ctx.session.quantity = data;
+            } else if (ctx.session.quantity !== '0') {
+              ctx.session.quantity = (ctx.session.quantity || '') + data;
+            }
+            
+            await this.updateQuantityMessage(ctx);
+            await ctx.answerCbQuery(data);
+          } else {
+            await ctx.answerCbQuery('Invalid input');
+          }
+      }
+    } catch (error) {
+      console.error('Error handling number keyboard:', error);
+      await ctx.answerCbQuery('Error processing input');
+    }
   }
 
   private async updateQuantityMessage(ctx: MyContext) {
@@ -659,7 +807,6 @@ export default class Checkout {
       const userId = ctx.from?.id.toString() as any;
       const { current_business_id } = await getUserById(userId);
 
-      // Update the cart item
       const updatedProduct = { ...product, quantity };
       const updateResult = await CartRepository.updateProductInCart(userId, current_business_id, product.id, quantity);
 
@@ -674,35 +821,47 @@ export default class Checkout {
             finalText
           );
         } catch (editError) {
-          // If editing fails, send a new message
           await ctx.reply(finalText);
         }
       } else {
         await ctx.reply('❌ Failed to update cart. Please try again.');
       }
 
-      // Reset session
+      // ✅ Reset session with isolated state
       ctx.session.step = 'idle';
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
-      this.BotSendMessageState = true;
+      ctx.session.botSendMessageState = true;
 
     } catch (error) {
       console.error('Error updating cart:', error);
       await ctx.reply('❌ Error updating cart');
       
-      // Reset session on error
+      // ✅ Reset session on error with isolated state
       ctx.session.step = 'idle';
       ctx.session.currentProduct = undefined;
       ctx.session.quantity = '';
       ctx.session.quantityMessageId = undefined;
-      this.BotSendMessageState = true;
+      ctx.session.botSendMessageState = true;
     }
   }
 
+  // Additional utility methods
+  async clearUserSession(userId: string | number): Promise<void> {
+    await this.sessionManager.deleteSession(userId);
+  }
+
+  async getUserSession(userId: string | number): Promise<CheckoutSession> {
+    return await this.sessionManager.getSession(userId);
+  }
+
+  async isRedisHealthy(): Promise<boolean> {
+    return await this.sessionManager.isHealthy();
+  }
+
   // Utility method to stop the bot gracefully
-  stop() {
-    this.bot.stop();
+  async stop() {
+    await this.gracefulStop('MANUAL');
   }
 }

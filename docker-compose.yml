@@ -1,37 +1,37 @@
 version: '3'
 
 services:
-  checkout:
-    build: .
-    ports:
-      - "4111:4111" #output:input
-    volumes:
-      - /app/node_modules
-    # volumes:
-    #   - .:/app
-    #   # Exclude node_modules and .mastra directories from volume mapping
-    #   - /app/node_modules
-    #   - /app/.mastra
-    environment:
-      - NODE_ENV=development
-      - DB_MEMORY=postgres://postgres:spectra@vector-db:5432
-      - GOOGLE_GENERATIVE_AI_API_KEY=AIzaSyAD_WjA_RMCGZZ8t0QfjendN1kbIJ4SWjc
-    develop:
-      watch:
-        - action: rebuild
-          path: .
-  vector-db:
-    image: pgvector/pgvector:pg17
-    environment:
-      POSTGRES_PASSWORD: spectra
-      POSTGRES_DB: checkout
-      POSTGRES_USER: postgres
-    ports:
-      - "5432:5432" #output:input
-    volumes:
-      - pgvector_data:/var/lib/postgresql/data
-      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # Optional: init scripts
+  redis:
+    image: redis
+    container_name: telegram-bot-redis
     restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:${REDIS_PASSWORD}
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=${REDIS_COMMANDER_PASSWORD:-admin123}
+    depends_on:
+      - redis
 
 volumes:
-  pgvector_data:
+  redis_data:
+# volumes:
+#   pgvector_data:
+#   redis_data:

@@ -20,7 +20,12 @@ const EnvSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
-  PAYSTACK_SECRET_KEY: z.string()
+  PAYSTACK_SECRET_KEY: z.string(),
+  // REDIS_HOST: z.string(),
+  // REDIS_PORT: z.string(),
+  // // REDIS_PASSWORD: z.string(),
+  // REDIS_DB: z.string(),
+  // SESSION_TTL: z.string(),
 })
 
 export type EnvSchema = z.infer<typeof EnvSchema>
