@@ -110,7 +110,7 @@ export const user = pgTable('user', {
   first_name: varchar('first_name', { length: 255 }),
   last_name: varchar('last_name', { length: 255 }),
   username: varchar('username', {length: 255}),
-  email: varchar('email', { length: 255 }).unique(),
+  email: varchar('email', { length: 255 }),
   phone: varchar('phone', { length: 255 }),
   current_business_id: varchar({length: 26}).notNull().references(() => business.id, { onDelete: 'cascade' }),
   // created_at: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

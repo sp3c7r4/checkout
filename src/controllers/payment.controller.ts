@@ -64,6 +64,7 @@ export async function handlePaystackPayment(data: any, event: string) {
       payment_id: payment.id,
       items: order.products || []
     };
+    console.log("Handling payment for order:", order_id, "with data:", paymentData);
   
     // await db.insert(payment).values(paymentData);
     return CheckoutEmitter.emit("sendReceipt", { 
@@ -73,6 +74,7 @@ export async function handlePaystackPayment(data: any, event: string) {
       imageBuffer: await generateReceipt(sampleReceiptData, 'image')
     });
   } catch(e) {
+    console.error(e)
     return OK('OK', e.message);
   }
 }

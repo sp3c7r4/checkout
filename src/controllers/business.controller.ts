@@ -74,6 +74,7 @@ export async function requestSpreadSheet(data: any) {
   );
   console.timeEnd('Creating sheet')
   console.time('Getting Sheet')
+  console.log("Email: ", email)
   await checkoutGoogleSheetsService.shareWithSpecificUsers(sheet.spreadsheetId, [ email ]);
   console.timeEnd('Getting Sheet')
   console.time('Saving sheet to db')
